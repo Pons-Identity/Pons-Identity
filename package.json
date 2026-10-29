@@ -5,10 +5,10 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "build:web": "npm --prefix web run build",
-    "dev:web": "npm --prefix web run dev",
+    "build:web": "npm --prefix web install && npm --prefix web run build",
+    "dev:web": "npm --prefix web install && npm --prefix web run dev",
     "test": "node --test test/*.test.js",
-    "test:web": "npm --prefix web test",
+    "test:web": "npm --prefix web install && npm --prefix web test",
     "docs:lint": "redocly lint",
     "docs:build": "redocly build-docs docs/openapi.yaml --output docs/api.html --inlineBundle --title \"Pons Identity User API\"",
     "upgrade": "node scripts/upgrade.js"
@@ -32,6 +32,7 @@
     "nodemailer": "^10.2.1",
     "qrcode": "^1.5.4",
     "ssh2": "^1.17.0",
+    "vite": "^8.3.5",
     "xml-crypto": "^6.4.0"
   },
   "devDependencies": {

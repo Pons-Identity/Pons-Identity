@@ -69,6 +69,26 @@ test('the steps lead from token to administrator to finishing, and the token tra
   expect(await screen.findByText(/The wizard is now switched off/)).toBeInTheDocument();
 });
 
+test('the import step can be skipped, and finishing then imports nothing', async () => {
+  mock({ session: { me: null, setupRequired: true }, status: { required: true, canRerun: false } });
+  open('/setup');
+  await userEvent.type(await screen.findByLabelText('Setup token'), 'abcd-1234');
+  await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+  await screen.findByLabelText('Username');
+  await userEvent.type(screen.getByLabelText('Email'), 'a@example.net');
+  await userEvent.type(screen.getByLabelText('Password'), 'long enough passphrase 1!');
+  await userEvent.type(screen.getByLabelText('Confirm password'), 'long enough passphrase 1!');
+  await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+  await screen.findByLabelText('Product name');
+  await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+  await screen.findByText(/Coming from another identity provider/);
+  await userEvent.click(screen.getByRole('button', { name: 'Skip this step' }));
+  expect(await screen.findByText('Import nothing (you can do it later under Settings → Migration).')).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Finish setup' }));
+  await waitFor(() => expect(calls.some((c) => c.path === '/api/setup/complete')).toBe(true));
+  expect(calls.find((c) => c.path === '/api/setup/complete').body).not.toHaveProperty('import');
+});
+
 test('a closed wizard is not shown to people who cannot reopen it', async () => {
   mock({ session: { me: { id: 1, username: 'a', display_name: 'A', is_admin: true, permissions: ['users.view'] }, setupRequired: false }, status: { required: false, canRerun: false } });
   open('/setup');

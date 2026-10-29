@@ -65,6 +65,11 @@ export default function Setup() {
     return setStep(step + 1);
   }
 
+  // Leaves the import step without importing anything, even if a preview was chosen before.
+  function skipImport() {
+    setErrors([]); setImportPlan(null); setStep(step + 1);
+  }
+
   async function finish() {
     setErrors([]); setBusy(true);
     try {
@@ -174,9 +179,12 @@ export default function Setup() {
               {label !== 'Setup token' && (
                 <Stack direction="row" justifyContent="space-between">
                   <Button disabled={busy || step === (rerun ? 0 : 1)} onClick={() => { setErrors([]); setStep(step - 1); }}>Back</Button>
-                  {label === 'Review'
-                    ? <Button variant="contained" disabled={busy} onClick={finish}>Finish setup</Button>
-                    : <Button variant="contained" onClick={next}>Next</Button>}
+                  <Stack direction="row" spacing={1}>
+                    {label === 'Import' && <Button disabled={busy} onClick={skipImport}>Skip this step</Button>}
+                    {label === 'Review'
+                      ? <Button variant="contained" disabled={busy} onClick={finish}>Finish setup</Button>
+                      : <Button variant="contained" onClick={next}>Next</Button>}
+                  </Stack>
                 </Stack>
               )}
               {!verified && !rerun && label !== 'Setup token' && <Link component="button" onClick={() => setStep(0)}>Enter the setup token</Link>}
