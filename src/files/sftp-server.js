@@ -66,7 +66,7 @@ const secs = (iso) => Math.floor((Date.parse(iso) || 0) / 1000);
 const attrsOf = (e) => ({
   mode: e.kind === 'dir' ? 0o40755 : 0o100644, uid: 0, gid: 0, size: e.size || 0, atime: secs(e.updated_at), mtime: secs(e.updated_at),
 });
-const longname = (e) => `${e.kind === 'dir' ? 'd' : '-'}rw-r--r-- 1 simpleidp simpleidp ${String(e.size || 0).padStart(10)} ${new Date(Date.parse(e.updated_at) || 0).toUTCString().slice(5, 16)} ${e.name}`;
+const longname = (e) => `${e.kind === 'dir' ? 'd' : '-'}rw-r--r-- 1 pons-identity pons-identity ${String(e.size || 0).padStart(10)} ${new Date(Date.parse(e.updated_at) || 0).toUTCString().slice(5, 16)} ${e.name}`;
 
 /** Serves the SFTP protocol for one session. `account` is the service account's name, as it signed in. */
 function serve(sftp, account, client) {

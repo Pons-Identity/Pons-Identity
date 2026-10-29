@@ -74,7 +74,11 @@ const BRANDING_DEFAULTS = {
   // On: the product name is used everywhere the product is named (messages, help, generated files). Off: only the branding uses appName.
   namePropagation: true,
   primaryColor: '#1f5fbf',
+  // The primary color in dark mode. The primary color above is used in light mode only.
+  darkPrimaryColor: '#7cb4ff',
   headerColor: '',
+  // The system font: the name of an installed font family (src/fonts.js), or '' for the browser's own system font.
+  fontFamily: '',
   logo: '',
   loginMessage: '',
   // Custom sign-in page: an HTML template using the {{variables}} below ('' = built-in page) and CSS applied to either page.
@@ -113,7 +117,10 @@ function parseBranding(body) {
     appName: text(body.appName),
     namePropagation: body.namePropagation !== false,
     primaryColor: text(body.primaryColor).toLowerCase(),
+    // Left out by an older client, the dark color is the default rather than an error.
+    darkPrimaryColor: text(body.darkPrimaryColor).toLowerCase() || BRANDING_DEFAULTS.darkPrimaryColor,
     headerColor: text(body.headerColor).toLowerCase(),
+    fontFamily: '',
     logo: typeof body.logo === 'string' ? body.logo : '',
     loginMessage: text(body.loginMessage),
     loginTemplate: typeof body.loginTemplate === 'string' ? body.loginTemplate.trim() : '',
@@ -121,7 +128,15 @@ function parseBranding(body) {
   };
   if (out.appName.length > 40) errors.push('Product name must be 40 characters or fewer.');
   if (!COLOR_RE.test(out.primaryColor)) errors.push('Primary color must look like #1f5fbf.');
+  if (!COLOR_RE.test(out.darkPrimaryColor)) errors.push('Dark-mode primary color must look like #7cb4ff.');
   if (out.headerColor && !COLOR_RE.test(out.headerColor)) errors.push('Header color must look like #1f5fbf, or be empty to use the primary color.');
+  // Only a font that is installed can be the system font; the name is stored in the spelling the family was installed under.
+  const wanted = text(body.fontFamily);
+  if (wanted) {
+    const row = db.get('SELECT family FROM font_files WHERE family = ? COLLATE NOCASE LIMIT 1', wanted);
+    if (row) out.fontFamily = row.family;
+    else errors.push('That font is not installed. Install it from Google Fonts or upload it, or use the default system font.');
+  }
   if (out.logo && !LOGO_RE.test(out.logo)) errors.push('Logo must be a PNG, JPEG, GIF, WebP or SVG image.');
   if (out.logo.length > MAX_LOGO) errors.push('Logo must be smaller than 256 KB.');
   if (out.loginMessage.length > 300) errors.push('Sign-in message must be 300 characters or fewer.');
@@ -173,17 +188,22 @@ const saveGlobalPasswordRules = (rules) => {
 
 /* ------------------- Sign-in page copy detection (anti-phishing) ------------------- */
 
-const PROTECTION_DEFAULTS = { enabled: true, notifyRoleIds: [], cooldownMinutes: 60 };
+const PROTECTION_DEFAULTS = { enabled: true, notifyRoleIds: [], notifyGroupIds: [], cooldownMinutes: 60 };
 
 const loginPageProtection = () => ({ ...PROTECTION_DEFAULTS, ...(read('login_page_protection') || {}) });
 
-function parseLoginPageProtection(body, roleExists) {
+// Who is emailed: people who hold one of the roles, and people who are members of one of the groups (effective membership, so
+// nested groups count). `roleExists` and `groupExists` check the ids against the database.
+function parseLoginPageProtection(body, roleExists, groupExists) {
   const errors = [];
-  const ids = Array.isArray(body.notifyRoleIds) ? [...new Set(body.notifyRoleIds.map(Number))] : [];
-  if (ids.some((id) => !Number.isInteger(id) || !roleExists(id))) errors.push('Choose roles that exist.');
+  const ids = (list) => (Array.isArray(list) ? [...new Set(list.map(Number))] : []);
+  const roleIds = ids(body.notifyRoleIds);
+  const groupIds = ids(body.notifyGroupIds);
+  if (roleIds.some((id) => !Number.isInteger(id) || !roleExists(id))) errors.push('Choose roles that exist.');
+  if (groupIds.some((id) => !Number.isInteger(id) || !groupExists(id))) errors.push('Choose groups that exist.');
   const cooldownMinutes = Number(body.cooldownMinutes);
   if (!Number.isInteger(cooldownMinutes) || cooldownMinutes < 1 || cooldownMinutes > 1440) errors.push('Minutes between alerts must be a whole number from 1 to 1440.');
-  return { data: { enabled: Boolean(body.enabled), notifyRoleIds: ids, cooldownMinutes }, errors };
+  return { data: { enabled: Boolean(body.enabled), notifyRoleIds: roleIds, notifyGroupIds: groupIds, cooldownMinutes }, errors };
 }
 
 const saveLoginPageProtection = (p) => write('login_page_protection', p);

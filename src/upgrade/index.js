@@ -20,7 +20,8 @@ const { extract } = require('./archive');
 
 class UpgradeError extends Error {}
 
-const PRODUCT = 'simple-idp';
+// The product's package name. Releases packed under its old name, simple-idp, are still recognised.
+const PRODUCT_NAMES = ['pons-identity', 'simple-idp'];
 const DEFAULT_KEEP = 5;
 
 const ensureDir = (d) => fs.mkdirSync(d, { recursive: true });
@@ -55,7 +56,7 @@ function protectedPaths({ root, dbPath, backupDir }) {
 
 /* ------------------------------- Finding the release ---------------------------- */
 
-const looksLikeRelease = (dir) => { try { return readJson(path.join(dir, 'package.json')).name === PRODUCT && exists(path.join(dir, 'src', 'server.js')); } catch { return false; } };
+const looksLikeRelease = (dir) => { try { return PRODUCT_NAMES.includes(readJson(path.join(dir, 'package.json')).name) && exists(path.join(dir, 'src', 'server.js')); } catch { return false; } };
 
 /** The folder inside `dir` that holds package.json: dir itself, or the one folder a GitHub-style archive wraps everything in. */
 function releaseRoot(dir) {
@@ -65,7 +66,7 @@ function releaseRoot(dir) {
   return null;
 }
 
-const ARCHIVE_RE = /(simple-?idp|simple_idp).*\.(zip|tgz|tar\.gz|tar)$/i;
+const ARCHIVE_RE = /(pons-?identity|simple-?idp|simple_idp).*\.(zip|tgz|tar\.gz|tar)$/i;
 
 /** Looks in a folder (usually Downloads) for the newest Pons Identity release: an unpacked folder or an archive. */
 function newestIn(dir) {
@@ -73,7 +74,7 @@ function newestIn(dir) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, e.name);
     try {
-      if (e.isDirectory() && /simple-?idp/i.test(e.name) && releaseRoot(full)) found.push({ path: full, mtime: fs.statSync(full).mtimeMs });
+      if (e.isDirectory() && /pons-?identity|simple-?idp/i.test(e.name) && releaseRoot(full)) found.push({ path: full, mtime: fs.statSync(full).mtimeMs });
       else if (e.isFile() && ARCHIVE_RE.test(e.name)) found.push({ path: full, mtime: fs.statSync(full).mtimeMs });
     } catch { /* unreadable entry */ }
   }
@@ -87,7 +88,7 @@ function locate(source, { stage, log }) {
   let st = fs.statSync(target);
   if (st.isDirectory() && !releaseRoot(target)) {
     const found = newestIn(target);
-    if (!found.length) throw new UpgradeError(`No Pons Identity release (a folder or a .zip/.tar.gz named like simple-idp) was found in ${target}.`);
+    if (!found.length) throw new UpgradeError(`No Pons Identity release (a folder or a .zip/.tar.gz named like pons-identity) was found in ${target}.`);
     if (found.length > 1) log(`Found ${found.length} candidates in ${target}; using the newest: ${path.basename(found[0].path)}`);
     target = found[0].path;
     st = fs.statSync(target);
@@ -98,7 +99,7 @@ function locate(source, { stage, log }) {
   log(`Unpacking ${path.basename(target)}`);
   extract(target, into);
   const dir = releaseRoot(into);
-  if (!dir) throw new UpgradeError('That archive does not contain Pons Identity (no package.json named simple-idp with src/server.js).');
+  if (!dir) throw new UpgradeError('That archive does not contain Pons Identity (no package.json for Pons Identity with src/server.js).');
   return { dir, from: target };
 }
 

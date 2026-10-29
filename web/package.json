@@ -1,5 +1,5 @@
 {
-  "name": "simple-idp-web",
+  "name": "pons-identity-web",
   "version": "1.0.0",
   "private": true,
   "type": "module",

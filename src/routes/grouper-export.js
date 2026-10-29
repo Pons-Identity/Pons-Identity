@@ -31,7 +31,7 @@ module.exports = function grouperExportRoutes(need) {
     const { files } = buildBundle(req.query);
     res.set({
       'content-type': 'application/zip',
-      'content-disposition': 'attachment; filename="simpleidp-grouper-export.zip"',
+      'content-disposition': 'attachment; filename="pons-identity-grouper-export.zip"',
       'cache-control': 'no-store',
     });
     res.send(zip(files));

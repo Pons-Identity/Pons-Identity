@@ -210,3 +210,13 @@ test('branding is public through the session, validated, and needs branding.mana
   const asEve = await signIn('eve', 'eve-password');
   assert.equal((await asEve('/api/admin/settings/branding', { method: 'PUT', body: { appName: 'X', primaryColor: '#000000' } })).status, 403);
 });
+
+test('the dark-mode primary color is checked, and an older client that leaves it out gets the default', async () => {
+  const admin = await signIn('admin', 'adminpass123');
+  assert.equal((await admin('/api/admin/settings/branding', { method: 'PUT', body: { appName: 'Acme', primaryColor: '#112233', darkPrimaryColor: 'blue' } })).status, 400);
+  const ok = await admin('/api/admin/settings/branding', { method: 'PUT', body: { appName: 'Acme', primaryColor: '#112233', darkPrimaryColor: '#ABCDEF' } });
+  assert.equal(ok.json.darkPrimaryColor, '#abcdef');
+  const older = await admin('/api/admin/settings/branding', { method: 'PUT', body: { appName: 'Acme', primaryColor: '#112233' } });
+  assert.equal(older.status, 200);
+  assert.equal(older.json.darkPrimaryColor, '#7cb4ff');
+});

@@ -5,6 +5,7 @@ const settings = require('./settings');
 const appSettings = require('./app-settings');
 const auditLog = require('./audit');
 const roles = require('./roles');
+const groupMembership = require('./group-membership');
 const messaging = require('./messaging');
 
 // Makes it harder to copy the custom sign-in page for a look-alike phishing site, and tells administrators when someone tries.
@@ -64,6 +65,19 @@ function usersWithRoles(roleIds) {
   return db.all("SELECT id, username, email FROM users WHERE active = 1 AND email != ''").filter((u) => roles.effectiveRoleIds(u.id).some((r) => want.has(r)));
 }
 
+/** Users who are effective members of any of the groups, nested groups included. Active, with an email. */
+function usersInGroups(groupIds) {
+  if (!groupIds.length) return [];
+  const members = new Set(groupIds.flatMap((g) => [...groupMembership.effectiveMembers(g)]));
+  return db.all("SELECT id, username, email FROM users WHERE active = 1 AND email != ''").filter((u) => members.has(u.id));
+}
+
+/** Everyone to email about a copy attempt: the holders of the chosen roles and the members of the chosen groups, once each. */
+function alertRecipients(cfg) {
+  const byId = new Map([...usersWithRoles(cfg.notifyRoleIds), ...usersInGroups(cfg.notifyGroupIds)].map((u) => [u.id, u]));
+  return [...byId.values()];
+}
+
 const lastAlert = new Map();
 
 /**
@@ -79,7 +93,7 @@ async function report(kind, req, detail = {}) {
     if (now - (lastAlert.get(key) || 0) < cfg.cooldownMinutes * 60000) return;
     lastAlert.set(key, now);
     auditLog.system(`login_page.${kind}`, { outcome: 'failure', ip: req.ip, detail: { ...detail, userAgent: String(req.get('user-agent') || '').slice(0, 200) } });
-    const recipients = usersWithRoles(cfg.notifyRoleIds);
+    const recipients = alertRecipients(cfg);
     const text = `${appSettings.productName()} noticed what looks like an attempt to copy your custom sign-in page, which could be used to build a look-alike phishing site.\n\n`
       + `What happened: ${kind === 'clone_detected' ? 'the sign-in page CSS was loaded from another website' : 'the sign-in page CSS was requested in a way a normal visitor would not'}\n`
       + `Details: ${Object.entries(detail).map(([k, v]) => `${k}=${v}`).join(', ')}\nFrom IP: ${req.ip}\nTime: ${new Date().toISOString()}\n\n`
@@ -93,4 +107,4 @@ async function report(kind, req, detail = {}) {
   }
 }
 
-module.exports = { protectionCss, fetchSuspicion, report, ownHost, hostOf, watermark, usersWithRoles };
+module.exports = { protectionCss, fetchSuspicion, report, ownHost, hostOf, watermark, usersWithRoles, usersInGroups, alertRecipients };

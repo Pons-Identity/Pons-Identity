@@ -79,8 +79,7 @@ const CORE_ARTICLES = [
     visible: everyone,
     body: [
       { steps: [
-        'Select your name in the top bar, then select **Profile**.',
-        'Scroll to **Color theme**.',
+        'Select your name in the top bar, then select **Color theme**.',
         'Select **System**, **Light** or **Dark**.',
       ] },
       'Your choice is saved in this browser only.',

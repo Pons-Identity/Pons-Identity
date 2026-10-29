@@ -28,7 +28,7 @@ class GitError extends Error {
 const KEY = 'integrations_git';
 const DEFAULT_BRANCH = 'main';
 const dir = () => process.env.INTEGRATIONS_GIT_DIR || (startup.dbPath === ':memory:'
-  ? path.join(os.tmpdir(), `simpleidp-integrations-git-${process.pid}`)
+  ? path.join(os.tmpdir(), `pons-identity-integrations-git-${process.pid}`)
   : path.join(path.dirname(startup.dbPath), 'integrations-git'));
 const gitBin = () => process.env.GIT_BIN || 'git';
 
@@ -204,7 +204,7 @@ function commit({ message, branch, author }) {
   const b = cleanBranch(branch);
   return exclusive(async () => {
     const env = {
-      GIT_AUTHOR_NAME: author.name || 'Pons Identity', GIT_AUTHOR_EMAIL: author.email || 'simpleidp@localhost', GIT_COMMITTER_NAME: author.name || 'Pons Identity', GIT_COMMITTER_EMAIL: author.email || 'simpleidp@localhost',
+      GIT_AUTHOR_NAME: author.name || 'Pons Identity', GIT_AUTHOR_EMAIL: author.email || 'pons-identity@localhost', GIT_COMMITTER_NAME: author.name || 'Pons Identity', GIT_COMMITTER_EMAIL: author.email || 'pons-identity@localhost',
     };
     const created = !isRepo();
     if (created) {
@@ -242,9 +242,9 @@ function push({ remoteUrl, branch, token }) {
       if (secret) {
         askDir = fs.mkdtempSync(path.join(os.tmpdir(), 'idp-askpass-'));
         const script = path.join(askDir, 'askpass.sh');
-        fs.writeFileSync(script, '#!/bin/sh\ncase "$1" in\n  Username*) printf \'%s\' "x-access-token" ;;\n  *) printf \'%s\' "$SIMPLEIDP_GIT_TOKEN" ;;\nesac\n', { mode: 0o700 });
+        fs.writeFileSync(script, '#!/bin/sh\ncase "$1" in\n  Username*) printf \'%s\' "x-access-token" ;;\n  *) printf \'%s\' "$PONS_IDENTITY_GIT_TOKEN" ;;\nesac\n', { mode: 0o700 });
         env.GIT_ASKPASS = script;
-        env.SIMPLEIDP_GIT_TOKEN = secret;
+        env.PONS_IDENTITY_GIT_TOKEN = secret;
       }
       try {
         const out = await git(['push', '--porcelain', 'origin', `HEAD:refs/heads/${b}`], { env, timeout: 120000, secrets: [secret] });

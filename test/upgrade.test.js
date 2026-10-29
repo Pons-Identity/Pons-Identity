@@ -131,12 +131,12 @@ test('a downloaded .zip works, including the single wrapping folder GitHub adds'
   const rel = path.join(tmp, 'zipsrc');
   lay(rel, '3.0.0', { tweak: addProbe });
   const files = {};
-  const walk = (d, p = '') => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { if (e.isDirectory()) walk(path.join(d, e.name), `${p}${e.name}/`); else files[`simple-idp-main/${p}${e.name}`] = fs.readFileSync(path.join(d, e.name), 'utf8'); } };
+  const walk = (d, p = '') => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { if (e.isDirectory()) walk(path.join(d, e.name), `${p}${e.name}/`); else files[`pons-identity-main/${p}${e.name}`] = fs.readFileSync(path.join(d, e.name), 'utf8'); } };
   walk(rel);
   const dl = path.join(tmp, 'zipdl');
   fs.mkdirSync(dl);
-  fs.writeFileSync(path.join(dl, 'simple-idp-main.zip'), zip(files));
-  const r = await upgrade(opts({ source: path.join(dl, 'simple-idp-main.zip') }));
+  fs.writeFileSync(path.join(dl, 'pons-identity-main.zip'), zip(files));
+  const r = await upgrade(opts({ source: path.join(dl, 'pons-identity-main.zip') }));
   assert.equal(r.to, '3.0.0');
   assert.equal(version(), '3.0.0');
   assert.ok(tables().includes('upgrade_probe'));

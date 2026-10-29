@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { CssBaseline, ThemeProvider } from '@mui/material';
 import { getStoredMode, makeTheme, storeMode } from '../theme.js';
 import { useAuth } from '../auth/AuthContext.jsx';
+import useFontStylesheet from './useFontStylesheet.js';
 
 const ThemeModeContext = createContext({ mode: 'system', setMode: () => {} });
 
@@ -32,6 +33,7 @@ export default function BrandedTheme({ children }) {
   useEffect(() => {
     if (branding?.appName) document.title = branding.appName;
   }, [branding?.appName]);
+  useFontStylesheet(branding?.fontFamily);
   return (
     <ThemeModeContext.Provider value={{ mode, setMode }}>
       <ThemeProvider theme={theme}>

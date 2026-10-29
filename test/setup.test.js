@@ -66,6 +66,24 @@ test('the first administrator must pass the password rules and the form must be 
   assert.equal(db.get('SELECT COUNT(*) AS n FROM users').n, 0);
 });
 
+test('the wizard can download a common Google font, and only with the token', async () => {
+  const fonts = require('../src/fonts');
+  fonts.useNetwork({
+    text: async (url) => ({ text: String(url).includes('/metadata/')
+      ? `)]}'\n${JSON.stringify({ familyMetadataList: [{ family: 'Lato', category: 'Sans Serif', variants: ['regular'] }] })}`
+      : "@font-face { font-family: 'Lato'; font-style: normal; font-weight: 400; src: url(https://fonts.gstatic.com/s/lato/a.woff2) format('woff2'); }" }),
+    bytes: async () => ({ body: Buffer.concat([Buffer.from('wOF2'), Buffer.alloc(8)]) }),
+  });
+  const h = { 'x-setup-token': token };
+  assert.equal((await anon.call('/api/setup/google-fonts')).status, 401);
+  const list = await anon.call('/api/setup/google-fonts', { headers: h });
+  assert.equal(list.status, 200);
+  assert.deepEqual(list.json.families.map((f) => [f.family, f.installed]), [['Lato', false]]);
+  assert.equal((await anon.call('/api/setup/google-fonts/Lato', { method: 'POST', headers: h })).json.installed, 'Lato');
+  assert.equal((await anon.call('/api/setup/google-fonts/Inter', { method: 'POST', headers: h })).status, 400);
+  assert.equal(fonts.installed().find((f) => f.family === 'Lato').faces.length, 1);
+});
+
 test('completing creates the administrator, applies the settings and shuts the wizard', async () => {
   const h = { 'x-setup-token': token };
   const done = await anon.call('/api/setup/complete', { method: 'POST', headers: h, body: {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AppBar, Box, Button, Container, ListItemIcon, ListItemText, Menu, MenuItem, Stack, Toolbar, Typography } from '@mui/material';
+import { AppBar, Box, Button, Container, Divider, ListItemIcon, ListItemText, Menu, MenuItem, Stack, Toolbar, Typography } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import DashboardIcon from '@mui/icons-material/Dashboard';
@@ -19,6 +19,8 @@ import PolicyIcon from '@mui/icons-material/Policy';
 import ApiIcon from '@mui/icons-material/Api';
 import DeviceHubIcon from '@mui/icons-material/DeviceHub';
 import HubIcon from '@mui/icons-material/Hub';
+import DevicesIcon from '@mui/icons-material/Devices';
+import PaletteIcon from '@mui/icons-material/Palette';
 import { Link as RouterLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { useCan } from '../auth/permissions.js';
@@ -128,7 +130,16 @@ export default function AppShell() {
                 <ListItemText primary="Guest accounts" />
               </MenuItem>
             )}
-            <MenuItem component="button" type="submit" form="logout-form">
+            <MenuItem component={RouterLink} to="/account/browsers" onClick={() => setProfileMenu(null)}>
+              <ListItemIcon><DevicesIcon fontSize="small" /></ListItemIcon>
+              <ListItemText primary="Browsers and activity" />
+            </MenuItem>
+            <MenuItem component={RouterLink} to="/account/appearance" onClick={() => setProfileMenu(null)}>
+              <ListItemIcon><PaletteIcon fontSize="small" /></ListItemIcon>
+              <ListItemText primary="Color theme" />
+            </MenuItem>
+            <Divider />
+            <MenuItem component="button" type="submit" form="logout-form" sx={{ width: '100%', justifyContent: 'flex-start', textAlign: 'left' }}>
               <ListItemIcon><LogoutIcon fontSize="small" /></ListItemIcon>
               <ListItemText primary="Sign out" />
             </MenuItem>

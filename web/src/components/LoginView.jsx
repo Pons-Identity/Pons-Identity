@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { Alert, Box, Button, Card, CardContent, Container, Divider, Stack, TextField, Typography } from '@mui/material';
+import { Alert, Box, Button, Card, CardContent, Container, Divider, Stack, TextField, Typography, useTheme } from '@mui/material';
 import { Link as RouterLink } from 'react-router-dom';
 import { renderTemplate, scopeCss } from '../loginTemplate.js';
+import { brandPrimary } from '../theme.js';
 
 // The sign-in page. Used for real sign-in and, with `preview`, inside the administrator's editor.
 // `template` is the administrator's HTML ('' = the built-in layout); `css` applies to either layout, scoped to .idp-login.
 export default function LoginView({ branding, template = '', css = '', federation = false, federationHref, recovery = false, error = '', busy = false, preview = false, onSubmit, defaults = {} }) {
   const form = useRef(null);
-  const html = useMemo(() => (template ? renderTemplate(template, { branding, federation, federationHref, recovery }) : ''), [template, branding, federation, federationHref, recovery]);
-  const vars = { '--idp-primary': branding.primaryColor || '#1f5fbf', '--idp-header': branding.headerColor || branding.primaryColor || '#1f5fbf' };
+  // The custom page's own CSS and template see the primary color for the mode the person is in.
+  const primary = brandPrimary(branding, useTheme().palette.mode);
+  const html = useMemo(() => (template ? renderTemplate(template, { branding: { ...branding, primaryColor: primary }, federation, federationHref, recovery }) : ''), [template, branding, primary, federation, federationHref, recovery]);
+  const vars = { '--idp-primary': primary, '--idp-header': branding.headerColor || primary };
   const wrapper = { minHeight: preview ? 460 : '100vh', position: 'relative' };
 
   // The custom page's controls are plain HTML, so show the error and the busy state on them directly.

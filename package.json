@@ -1,7 +1,7 @@
 {
-  "name": "simple-idp",
+  "name": "pons-identity",
   "version": "1.0.0",
-  "description": "Simple SAML 2.0 Identity Provider",
+  "description": "Pons Identity: a SAML 2.0 identity provider",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",

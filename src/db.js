@@ -1246,7 +1246,23 @@ addMissingColumns('groups', [
   ['position', 'INTEGER NOT NULL DEFAULT 0'],
 ]);
 
-const all = (sql, ...p) => db.prepare(sql).all(...p);
+// Font files for the branding (src/fonts.js): one row per face, and per unicode-range subset for fonts from Google.
+db.exec(`
+CREATE TABLE IF NOT EXISTS font_files (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  family TEXT NOT NULL,
+  style TEXT NOT NULL,
+  weight INTEGER NOT NULL,
+  unicode_range TEXT NOT NULL DEFAULT '',
+  format TEXT NOT NULL,
+  source TEXT NOT NULL,
+  data BLOB NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS font_files_face ON font_files (family, style, weight, unicode_range);
+`);
+
+const all =(sql, ...p) => db.prepare(sql).all(...p);
 const get = (sql, ...p) => db.prepare(sql).get(...p);
 const run = (sql, ...p) => db.prepare(sql).run(...p);
 

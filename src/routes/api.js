@@ -28,6 +28,7 @@ const apps = require('../apps');
 const attrs = require('../attributes');
 const duo = require('../duo');
 const totp = require('../totp');
+const fonts = require('../fonts');
 const { verifyPasswordAsync, dummyPasswordHash, BusyError, hashPassword, fingerprints } = require('../crypto');
 const throttle = require('../throttle');
 const security = require('../security-settings');
@@ -2447,22 +2448,93 @@ admin.put('/settings/branding', need('branding.manage'), (req, res) => {
   if (errors.length) return fail(res, errors);
   const before = appSettings.branding();
   appSettings.saveBranding(data);
+  // Picking another system font (or the default) frees the Google Fonts that are no longer used.
+  if (before.fontFamily.toLowerCase() !== data.fontFamily.toLowerCase()) fonts.forgetRemoved(fonts.pruneGoogle(data.fontFamily));
   auditLog.admin('settings.branding', { actor: auditLog.who(req.user), target: { type: 'settings', name: 'branding' },
     detail: { changed: Object.keys(data).filter((k) => JSON.stringify(before[k]) !== JSON.stringify(data[k])) } });
   res.json(appSettings.branding());
 });
 
-admin.get('/settings/login-page-protection', need('branding.manage'), (req, res) => {
-  const roleList = db.all('SELECT id, name FROM roles ORDER BY key = \'admin\' DESC, name');
-  res.json({ ...appSettings.loginPageProtection(), roles: roleList, emailConfigured: messaging.configured('email') });
+// Fonts for the branding: Google Fonts (a short list, downloaded to this server) and uploaded files. Font files come in as the raw
+// body, one file per request, with the family, style and weight in the query.
+const fontUpload = express.raw({ type: 'application/octet-stream', limit: '4mb' });
+const fontErrors = (res, e) => fail(res, e.message, e.status || 500);
+
+admin.get('/settings/fonts', need('branding.manage'), (req, res) => res.json({ families: fonts.installed() }));
+
+admin.get('/settings/google-fonts', need('branding.manage'), async (req, res) => {
+  try {
+    res.json(await fonts.googleCatalog());
+  } catch (e) { fontErrors(res, e); }
 });
 
+admin.post('/settings/google-fonts/:family', need('branding.manage'), async (req, res) => {
+  try {
+    const family = await fonts.installGoogle(req.params.family);
+    auditLog.admin('settings.fonts', { actor: auditLog.who(req.user), target: { type: 'settings', name: 'fonts' }, detail: { installed: family, source: 'google' } });
+    res.json({ families: fonts.installed(), installed: family });
+  } catch (e) { fontErrors(res, e); }
+});
+
+admin.post('/settings/fonts', need('branding.manage'), (req, res, next) => fontUpload(req, res, (err) => {
+  if (err) return fail(res, 'That font file is larger than 4 MB.', 413);
+  return next();
+}), (req, res) => {
+  try {
+    const family = fonts.uploadFace({ family: req.query.family, style: req.query.style, weight: Number(req.query.weight),
+      name: req.query.name, data: req.body });
+    auditLog.admin('settings.fonts', { actor: auditLog.who(req.user), target: { type: 'settings', name: 'fonts' }, detail: { uploaded: family, style: req.query.style, weight: Number(req.query.weight) } });
+    res.json({ families: fonts.installed() });
+  } catch (e) { fontErrors(res, e); }
+});
+
+admin.delete('/settings/fonts/:family', need('branding.manage'), (req, res) => {
+  const family = fonts.removeFamily(req.params.family);
+  if (!family) return fail(res, 'That font is not installed.', 404);
+  // A removed font cannot stay the system font.
+  if (appSettings.branding().fontFamily.toLowerCase() === family.toLowerCase()) appSettings.saveBranding({ ...appSettings.branding(), fontFamily: '' });
+  auditLog.admin('settings.fonts', { actor: auditLog.who(req.user), target: { type: 'settings', name: 'fonts' }, detail: { removed: family } });
+  res.json({ families: fonts.installed() });
+});
+
+// One face (style and weight) of a family, such as the bold italic of an uploaded font.
+admin.delete('/settings/fonts/:family/faces/:style/:weight', need('branding.manage'), (req, res) => {
+  const style = req.params.style;
+  const weight = Number(req.params.weight);
+  if (!['normal', 'italic'].includes(style) || !Number.isInteger(weight)) return fail(res, 'That is not a font face.');
+  const gone = fonts.removeFace(req.params.family, style, weight);
+  if (!gone) return fail(res, 'That font face is not installed.', 404);
+  fonts.forgetRemoved(gone);
+  auditLog.admin('settings.fonts', { actor: auditLog.who(req.user), target: { type: 'settings', name: 'fonts' }, detail: { removedFace: `${req.params.family} ${style} ${weight}` } });
+  res.json({ families: fonts.installed() });
+});
+
+// Every Google Font except the one the form has chosen (empty for the browser default). Uploads are kept.
+admin.delete('/settings/google-fonts/unused', need('branding.manage'), (req, res) => {
+  const removed = fonts.pruneGoogle(typeof req.query.keep === 'string' ? req.query.keep : '');
+  fonts.forgetRemoved(removed);
+  auditLog.admin('settings.fonts', { actor: auditLog.who(req.user), target: { type: 'settings', name: 'fonts' }, detail: { removedUnused: removed } });
+  res.json({ removed, families: fonts.installed() });
+});
+
+// The copy-detection choices, with the roles and groups to pick from.
+const protectionView = () => ({
+  ...appSettings.loginPageProtection(),
+  roles: db.all('SELECT id, name FROM roles ORDER BY key = \'admin\' DESC, name'),
+  groups: db.all('SELECT id, name FROM groups ORDER BY name'),
+  emailConfigured: messaging.configured('email'),
+});
+
+admin.get('/settings/login-page-protection', need('branding.manage'), (req, res) => res.json(protectionView()));
+
 admin.put('/settings/login-page-protection', need('branding.manage'), (req, res) => {
-  const { data, errors } = appSettings.parseLoginPageProtection(req.body, (id) => Boolean(db.get('SELECT 1 FROM roles WHERE id = ?', id)));
+  const { data, errors } = appSettings.parseLoginPageProtection(req.body,
+    (id) => Boolean(db.get('SELECT 1 FROM roles WHERE id = ?', id)),
+    (id) => Boolean(db.get('SELECT 1 FROM groups WHERE id = ?', id)));
   if (errors.length) return fail(res, errors);
   appSettings.saveLoginPageProtection(data);
   auditLog.admin('settings.login_page_protection', { actor: auditLog.who(req.user), target: { type: 'settings', name: 'login-page-protection' }, detail: data });
-  res.json({ ...data, roles: db.all('SELECT id, name FROM roles ORDER BY key = \'admin\' DESC, name'), emailConfigured: messaging.configured('email') });
+  res.json(protectionView());
 });
 
 /* Sign-in log and risk */

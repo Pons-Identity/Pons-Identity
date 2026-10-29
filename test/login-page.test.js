@@ -85,3 +85,29 @@ test('a beacon hit from another site is reported by email to the chosen roles; o
   await fetch(`${base}/api/login-page/beacon.gif?t=nope`, { headers: { referer: 'https://other.example/' } });
   assert.equal(db.all("SELECT 1 FROM audit_log WHERE action = 'login_page.clone_detected'").length, 1);
 });
+
+test('copy alerts also go to members of the chosen groups, nested groups included, once each', async () => {
+  const { hashPassword } = require('../src/crypto');
+  const { newGuid } = require('../src/guid');
+  const addUser = (name, email) => Number(db.run('INSERT INTO users (guid, username, password_hash, email) VALUES (?,?,?,?)',
+    newGuid(), name, hashPassword(`${name}-password`), email).lastInsertRowid);
+  const gina = addUser('gina', 'gina@example.com');
+  const hal = addUser('hal', 'hal@example.com');
+  const inner = Number(db.run("INSERT INTO groups (name) VALUES ('Inner')").lastInsertRowid);
+  const outer = Number(db.run("INSERT INTO groups (name) VALUES ('Security')").lastInsertRowid);
+  db.run('INSERT INTO group_members (group_id, user_id) VALUES (?, ?)', inner, gina);
+  db.run('INSERT INTO group_members (group_id, user_id) VALUES (?, ?)', outer, hal);
+  db.run('INSERT INTO group_members (group_id, user_id) VALUES (?, ?)', outer, gina);
+  db.run('INSERT INTO group_includes (group_id, member_group_id) VALUES (?, ?)', outer, inner);
+  appSettings.saveLoginPageProtection({ enabled: true, notifyRoleIds: [], notifyGroupIds: [outer], cooldownMinutes: 60 });
+
+  const before = sent.length;
+  const guard = require('../src/login-page-guard');
+  const url = `${base}/api/login-page/beacon.gif?t=${guard.watermark()}`;
+  await fetch(url, { headers: { referer: 'https://group-copy.example/signin' } });
+  await new Promise((x) => setTimeout(x, 100));
+  assert.deepEqual(sent.slice(before).map((m) => m.to).sort(), ['gina@example.com', 'hal@example.com']);
+
+  // An unknown group is refused.
+  assert.deepEqual(appSettings.parseLoginPageProtection({ notifyGroupIds: [9999], cooldownMinutes: 60 }, () => true, () => false).errors, ['Choose groups that exist.']);
+});

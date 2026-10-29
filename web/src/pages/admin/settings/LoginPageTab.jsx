@@ -36,7 +36,9 @@ function Protection() {
   useEffect(() => { api('/admin/settings/login-page-protection').then(setCfg).catch((e) => setErrors([e.message])); }, []);
   if (!cfg) return errors.length ? <Alert severity="error">{errors[0]}</Alert> : null;
 
-  const toggleRole = (id) => setCfg((c) => ({ ...c, notifyRoleIds: c.notifyRoleIds.includes(id) ? c.notifyRoleIds.filter((r) => r !== id) : [...c.notifyRoleIds, id] }));
+  const toggle = (key, id) => setCfg((c) => ({ ...c, [key]: c[key].includes(id) ? c[key].filter((x) => x !== id) : [...c[key], id] }));
+  const toggleRole = (id) => toggle('notifyRoleIds', id);
+  const toggleGroup = (id) => toggle('notifyGroupIds', id);
 
   async function save(e) {
     e.preventDefault();
@@ -69,8 +71,19 @@ function Protection() {
                   control={<Checkbox checked={cfg.notifyRoleIds.includes(r.id)} onChange={() => toggleRole(r.id)} />} />
               ))}
             </FormGroup>
-            {!cfg.emailConfigured && <Alert severity="warning" sx={{ mt: 1 }}>Email delivery is not set up (Settings → Messaging), so alerts are recorded in the audit log only.</Alert>}
           </Box>
+          <Box>
+            <Typography variant="subtitle2">Email members of these groups</Typography>
+            <Typography variant="caption" color="text.secondary">Members include people in groups nested inside these. Each person is emailed once.</Typography>
+            {cfg.groups.length === 0 && <Typography variant="body2" color="text.secondary">No groups yet.</Typography>}
+            <FormGroup sx={{ maxHeight: 240, overflowY: 'auto', flexWrap: 'nowrap' }}>
+              {cfg.groups.map((g) => (
+                <FormControlLabel key={g.id} label={g.name}
+                  control={<Checkbox checked={cfg.notifyGroupIds.includes(g.id)} onChange={() => toggleGroup(g.id)} />} />
+              ))}
+            </FormGroup>
+          </Box>
+          {!cfg.emailConfigured && <Alert severity="warning">Email delivery is not set up (Settings → Messaging), so alerts are recorded in the audit log only.</Alert>}
           <TextField label="Minutes between alerts" type="number" value={cfg.cooldownMinutes} sx={{ maxWidth: 240 }}
             onChange={(e) => setCfg({ ...cfg, cooldownMinutes: e.target.value === '' ? '' : Number(e.target.value) })}
             helperText="At most one email per source in this time. Every event is still in the audit log (login_page.*)." />

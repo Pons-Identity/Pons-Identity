@@ -4,6 +4,9 @@ import { Alert, Box, Button, CircularProgress, Container, Link, Paper, Step, Ste
 import { api } from '../api/client.js';
 import { useAuth, useProductName } from '../auth/AuthContext.jsx';
 import MigrationPanel, { ImportReport } from '../components/MigrationPanel.jsx';
+import SystemFontSelect from '../components/SystemFontSelect.jsx';
+import useFontStylesheet from '../components/useFontStylesheet.js';
+import { fontStack } from '../theme.js';
 
 // The first-run setup wizard. It is open while Pons Identity has no users, to whoever has the one-time token printed on the server's
 // console; afterwards it is closed, and a signed-in person with the "Re-run the setup wizard" permission can open it again (it then
@@ -19,7 +22,7 @@ export default function Setup() {
   const [step, setStep] = useState(0);
   const [defaults, setDefaults] = useState(null);
   const [admin, setAdmin] = useState({ username: 'admin', first_name: '', last_name: '', email: '', password: '', confirm: '' });
-  const [site, setSite] = useState({ appName: '', primaryColor: '', sessionHours: 8, idleMinutes: 30 });
+  const [site, setSite] = useState({ appName: '', primaryColor: '', fontFamily: '', sessionHours: 8, idleMinutes: 30 });
   const [importPlan, setImportPlan] = useState(null);
   const [errors, setErrors] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -33,9 +36,11 @@ export default function Setup() {
   const loadDefaults = async (h) => {
     const d = await api('/setup/defaults', { headers: h });
     setDefaults(d);
-    setSite({ appName: d.branding.appName, primaryColor: d.branding.primaryColor, sessionHours: d.session.sessionHours, idleMinutes: d.session.idleMinutes });
+    setSite({ appName: d.branding.appName, primaryColor: d.branding.primaryColor, fontFamily: d.branding.fontFamily || '', sessionHours: d.session.sessionHours, idleMinutes: d.session.idleMinutes });
   };
   useEffect(() => { if (rerun) loadDefaults(undefined).catch((e) => setErrors([e.message])); }, [rerun]);
+  // The font is loaded as soon as it is chosen, so the step below shows it.
+  useFontStylesheet(site.fontFamily, 'preview-font');
 
   if (!state) return <Stack alignItems="center" sx={{ mt: 8 }}>{errors.length ? <Alert severity="error">{errors[0]}</Alert> : <CircularProgress />}</Stack>;
   // Nothing to set up, and nobody who may reopen it: this page does not exist for them.
@@ -77,7 +82,7 @@ export default function Setup() {
         method: 'POST', headers,
         body: {
           ...(rerun ? {} : { admin }),
-          branding: { appName: site.appName.trim(), primaryColor: site.primaryColor },
+          branding: { appName: site.appName.trim(), primaryColor: site.primaryColor, fontFamily: site.fontFamily },
           session: { sessionHours: Number(site.sessionHours), idleMinutes: Number(site.idleMinutes) || 0 },
           ...(importPlan ? { import: importPlan } : {}),
         },
@@ -137,7 +142,7 @@ export default function Setup() {
               )}
 
               {label === 'Your site' && (
-                <Stack spacing={2}>
+                <Stack spacing={2} sx={{ '& .MuiTypography-root, & .MuiInputBase-input, & .MuiInputLabel-root': { fontFamily: fontStack(site.fontFamily) } }}>
                   <Typography>What people see, and how long they stay signed in. You can change all of this later under Settings.</Typography>
                   {mismatch && (
                     <Alert severity="warning">
@@ -150,6 +155,7 @@ export default function Setup() {
                     <TextField label="Primary color" value={site.primaryColor} onChange={(e) => setSite({ ...site, primaryColor: e.target.value })} helperText="For example #1f5fbf." />
                     <Box aria-hidden sx={{ width: 40, height: 40, borderRadius: 1, border: 1, borderColor: 'divider', bgcolor: COLOR_RE.test(site.primaryColor) ? site.primaryColor : 'transparent' }} />
                   </Stack>
+                  <SystemFontSelect base="/setup" headers={headers} value={site.fontFamily} onChange={(v) => setSite({ ...site, fontFamily: v })} />
                   <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
                     <TextField label="Session length (hours)" type="number" value={site.sessionHours} onChange={(e) => setSite({ ...site, sessionHours: e.target.value })} helperText="1 to 720." />
                     <TextField label="Idle timeout (minutes)" type="number" value={site.idleMinutes} onChange={(e) => setSite({ ...site, idleMinutes: e.target.value })} helperText="0 turns it off; otherwise 5 to 1440." />
@@ -170,6 +176,7 @@ export default function Setup() {
                   <Typography component="ul" sx={{ m: 0, pl: 3 }}>
                     {!rerun && <li>Create the administrator <b>{admin.username}</b> ({admin.email}).</li>}
                     <li>Call the product <b>{site.appName.trim() || productName}</b>; sessions last {site.sessionHours} hours{Number(site.idleMinutes) ? `, ending after ${site.idleMinutes} idle minutes` : ''}.</li>
+                    {site.fontFamily && <li>Set <b>{site.fontFamily}</b> as the system font.</li>}
                     <li>{importPlan ? 'Import what you previewed on the last step.' : 'Import nothing (you can do it later under Settings → Migration).'}</li>
                   </Typography>
                   {!rerun && <Typography variant="body2" color="text.secondary">When you finish, the setup wizard switches itself off. Only someone with the “Re-run the setup wizard” permission can open it again, or it reopens by itself if the database is ever emptied of users.</Typography>}

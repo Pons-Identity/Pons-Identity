@@ -74,7 +74,7 @@ export const SETUP_ARTICLES = [
     ],
   },
   {
-    slug: 'upgrade-simpleidp',
+    slug: 'upgrade-pons-identity',
     section: 'Upgrades',
     title: 'Upgrade Pons Identity in place',
     summary: 'Install a newer release on the same server, with a backup and a way back.',

@@ -88,7 +88,7 @@ function defaults() {
   const b = appSettings.branding();
   const sec = security.get();
   return {
-    branding: { appName: b.appName, primaryColor: b.primaryColor, headerColor: b.headerColor },
+    branding: { appName: b.appName, primaryColor: b.primaryColor, headerColor: b.headerColor, fontFamily: b.fontFamily },
     session: { sessionHours: sec.sessionHours, idleMinutes: sec.idleMinutes || 30 },
     baseUrl: startup.baseUrl,
     tls: Boolean(startup.tls),

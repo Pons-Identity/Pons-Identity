@@ -102,6 +102,22 @@ async function safeFetchText(rawUrl, { timeoutMs = 10000, maxBytes = 1024 * 1024
   throw new Error('Too many redirects.');
 }
 
+/** safeFetchText for a binary file (a font, say): the same rules, and it resolves { status, body } with body a Buffer. */
+async function safeFetchBytes(rawUrl, { timeoutMs = 10000, maxBytes = 1024 * 1024, headers } = {}) {
+  const allowPrivate = process.env.ALLOW_PRIVATE_FETCH === 'true';
+  let url = new URL(rawUrl);
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    const r = await once(url, { method: 'GET', headers, timeoutMs, maxBytes, allowPrivate });
+    if (r.status >= 300 && r.status < 400 && r.headers.location) {
+      url = new URL(r.headers.location, url);
+      continue;
+    }
+    if (!(r.status >= 200 && r.status < 300)) throw new Error(`HTTP ${r.status}`);
+    return { status: r.status, body: r.body };
+  }
+  throw new Error('Too many redirects.');
+}
+
 /**
  * Send one request to an admin-configured API (SMS, voice, email providers) under the same rules as safeFetchText:
  * http(s) only, public addresses only, a timeout, a size cap (a longer reply is cut off, not refused), and no redirects (a redirect would re-send credentials
@@ -113,4 +129,4 @@ async function safeRequest(rawUrl, { method = 'POST', headers, body, timeoutMs =
   return { status: r.status, ok: r.status >= 200 && r.status < 300, text: r.body.toString('utf8') };
 }
 
-module.exports = { safeFetchText, safeRequest, isPrivateAddress };
+module.exports = { safeFetchText, safeFetchBytes, safeRequest, isPrivateAddress };

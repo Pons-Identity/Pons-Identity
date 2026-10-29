@@ -10,6 +10,8 @@ import MyGroups from './pages/MyGroups.jsx';
 import MyGuests from './pages/MyGuests.jsx';
 import MyGroup from './pages/MyGroup.jsx';
 import Profile from './pages/Profile.jsx';
+import Browsers from './pages/Browsers.jsx';
+import Appearance from './pages/Appearance.jsx';
 import Help from './pages/Help.jsx';
 import RunIntegrations from './pages/RunIntegrations.jsx';
 import Dashboard from './pages/admin/Dashboard.jsx';
@@ -91,6 +93,8 @@ export default function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/admin" element={<Navigate to="/" replace />} />
           <Route path="/account/profile" element={<Profile />} />
+          <Route path="/account/browsers" element={<Browsers />} />
+          <Route path="/account/appearance" element={<Appearance />} />
           <Route path="/help" element={<Help />} />
           <Route path="/help/:slug" element={<Help />} />
           <Route path="/account/mfa" element={<Navigate to="/account/profile" replace />} />

@@ -105,7 +105,7 @@ test('push sends the branch with the token only through the environment, and rep
   const fake = path.join(work, 'fake-git.sh');
   fs.writeFileSync(fake, `#!/bin/sh
 case " $* " in
-  *" push "*) echo "$SIMPLEIDP_GIT_TOKEN|$GIT_ASKPASS|$*" > "${seen}"; if [ "$SIMPLEIDP_GIT_TOKEN" = "bad" ]; then echo "fatal: Authentication failed for 'https://93.184.216.34/team/repo.git' using bad" >&2; exit 128; fi; echo "To https://93.184.216.34/team/repo.git"; exit 0 ;;
+  *" push "*) echo "$PONS_IDENTITY_GIT_TOKEN|$GIT_ASKPASS|$*" > "${seen}"; if [ "$PONS_IDENTITY_GIT_TOKEN" = "bad" ]; then echo "fatal: Authentication failed for 'https://93.184.216.34/team/repo.git' using bad" >&2; exit 128; fi; echo "To https://93.184.216.34/team/repo.git"; exit 0 ;;
 esac
 exec git "$@"
 `, { mode: 0o755 });

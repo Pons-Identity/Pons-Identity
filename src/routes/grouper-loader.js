@@ -51,7 +51,7 @@ module.exports = function grouperLoaderRoutes(need) {
       'sync.sh': bundle.syncScript(cfg, base),
       'loader-settings.txt': bundle.loaderSettings(cfg, stems),
     };
-    res.set({ 'content-type': 'application/zip', 'content-disposition': 'attachment; filename="simpleidp-grouper-loader.zip"', 'cache-control': 'no-store' });
+    res.set({ 'content-type': 'application/zip', 'content-disposition': 'attachment; filename="pons-identity-grouper-loader.zip"', 'cache-control': 'no-store' });
     res.send(zip(files));
   });
 

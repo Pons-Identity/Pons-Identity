@@ -30,9 +30,9 @@ module.exports = function dataRoutes(need) {
     const stamp = doc.exported_at.slice(0, 10);
     res.set('Cache-Control', 'no-store');
     if (zipped) {
-      res.type('application/zip').set('Content-Disposition', `attachment; filename="simpleidp-export-${stamp}.zip"`).send(zip(exporter.files(doc)));
+      res.type('application/zip').set('Content-Disposition', `attachment; filename="pons-identity-export-${stamp}.zip"`).send(zip(exporter.files(doc)));
     } else {
-      res.type('application/json').set('Content-Disposition', `attachment; filename="simpleidp-export-${stamp}.json"`).send(`${JSON.stringify(doc, null, 2)}\n`);
+      res.type('application/json').set('Content-Disposition', `attachment; filename="pons-identity-export-${stamp}.json"`).send(`${JSON.stringify(doc, null, 2)}\n`);
     }
   });
 

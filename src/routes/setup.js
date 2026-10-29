@@ -5,6 +5,7 @@ const setup = require('../setup');
 const migrate = require('../migrate');
 const migrateRoutes = require('./migrate');
 const appSettings = require('../app-settings');
+const fonts = require('../fonts');
 
 // The setup wizard's API, at /api/setup. It answers only while the wizard is open (the database has no users) to a person who
 // knows the one-time token printed on the server's console, or afterwards to a signed-in person holding `setup.run`, who
@@ -47,6 +48,19 @@ router.get('/defaults', gate, (req, res) => res.json({ ...setup.defaults(), mode
 
 router.use('/migrate', gate, migrateRoutes({ ctx: (req) => req.setup, canApply: false }));
 
+// The system font: the common Google Fonts, and downloading one of them. Uploading a font is left to the branding page.
+router.get('/google-fonts', gate, async (req, res) => {
+  try {
+    res.json(await fonts.googleCatalog());
+  } catch (e) { fail(res, e.message, e.status || 500); }
+});
+
+router.post('/google-fonts/:family', gate, async (req, res) => {
+  try {
+    res.json({ installed: await fonts.installGoogle(req.params.family) });
+  } catch (e) { fail(res, e.message, e.status || 500); }
+});
+
 router.post('/complete', gate, async (req, res, next) => {
   try {
     const { mode, actor, owner } = req.setup;
@@ -65,6 +79,8 @@ router.post('/complete', gate, async (req, res, next) => {
       if (e.status) return fail(res, e.message, e.status);
       throw e;
     }
+    // Google Fonts downloaded earlier in the wizard and then passed over are not kept.
+    if (v.branding) fonts.pruneGoogle(v.branding.fontFamily);
     if (mode === 'initial') setup.finish();
     res.json({ ok: true, mode, imported: result.imported ? { counts: result.imported.counts, secrets: result.imported.secrets, notes: result.imported.notes } : null });
   } catch (e) { next(e); }

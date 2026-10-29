@@ -1,12 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
-import { Alert, Box, Button, Card, CardContent, FormControlLabel, Stack, Switch, TextField, Typography, useTheme } from '@mui/material';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Box, Button, Card, CardContent, FormControlLabel, Stack, Switch, TextField, ThemeProvider, Typography } from '@mui/material';
 import PageIntro from './PageIntro.jsx';
 import { api } from '../../../api/client.js';
 import { useAuth } from '../../../auth/AuthContext.jsx';
 import { useNotify } from '../../../components/Notify.jsx';
+import useFontStylesheet from '../../../components/useFontStylesheet.js';
+import { MIN_CONTRAST } from '../../../contrast.js';
+import { brandPrimary, contrastProblems, makeTheme } from '../../../theme.js';
+import FontSettings from './FontSettings.jsx';
 
 // loginTemplate/loginCss belong to the Sign-in page tab; they ride along so saving branding never clears them.
-const DEFAULTS = { appName: 'Pons Identity', namePropagation: true, primaryColor: '#1f5fbf', headerColor: '', logo: '', loginMessage: '' };
+const DEFAULTS = { appName: 'Pons Identity', namePropagation: true, primaryColor: '#1f5fbf', darkPrimaryColor: '#7cb4ff', headerColor: '', fontFamily: '', logo: '', loginMessage: '' };
 const MAX_LOGO = 256 * 1024;
 const HEX = /^#[0-9a-fA-F]{6}$/;
 
@@ -14,34 +18,71 @@ const HEX = /^#[0-9a-fA-F]{6}$/;
 function ColorField({ label, value, onChange, fallback, helperText }) {
   return (
     <Stack direction="row" spacing={1} alignItems="flex-start">
-      <TextField label={label} value={value} onChange={(e) => onChange(e.target.value)} placeholder="#1f5fbf"
+      <TextField label={label} value={value} onChange={(e) => onChange(e.target.value)} placeholder={fallback}
         error={Boolean(value) && !HEX.test(value)} helperText={helperText} sx={{ flexGrow: 1 }} />
+      {/* A fixed size that does not shrink, so both pickers are the same width whatever their helper text. */}
       <Box component="input" type="color" aria-label={`${label} picker`} value={HEX.test(value) ? value : fallback}
-        onChange={(e) => onChange(e.target.value)} sx={{ width: 48, height: 56, p: 0.5, border: 1, borderColor: 'divider', borderRadius: 1, bgcolor: 'transparent' }} />
+        onChange={(e) => onChange(e.target.value)}
+        sx={{ display: 'block', flexShrink: 0, boxSizing: 'border-box', width: 56, minWidth: 56, height: 56, p: 0.5, border: 1, borderColor: 'divider', borderRadius: 1, bgcolor: 'transparent' }} />
     </Stack>
   );
 }
 
-function Preview({ form }) {
-  const { palette } = useTheme();
-  const primary = HEX.test(form.primaryColor) ? form.primaryColor : DEFAULTS.primaryColor;
-  const header = HEX.test(form.headerColor) ? form.headerColor : primary;
+// The branding as the preview and the warnings should see it: a color that is not valid yet falls back, so the theme can be made.
+const previewable = (form) => ({
+  ...form,
+  primaryColor: HEX.test(form.primaryColor) ? form.primaryColor : DEFAULTS.primaryColor,
+  darkPrimaryColor: HEX.test(form.darkPrimaryColor) ? form.darkPrimaryColor : DEFAULTS.darkPrimaryColor,
+});
+
+const ratioText = (r) => `${r.toFixed(2)}:1`;
+
+// Says where the primary color is too faint, in each mode. Nothing is said while a color is still being typed.
+function ContrastWarnings({ form }) {
+  if (!HEX.test(form.primaryColor) || !HEX.test(form.darkPrimaryColor)) return null;
+  const branding = previewable(form);
+  const modes = [['light', 'Light mode'], ['dark', 'Dark mode']];
+  const problems = modes.flatMap(([mode, name]) => contrastProblems(branding, mode).map((p) => ({ ...p, name })));
+  if (!problems.length) return null;
   return (
-    <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1, overflow: 'hidden' }} aria-label="Preview">
-      <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 2, py: 1.5, bgcolor: header, color: palette.getContrastText(header) }}>
-        {form.logo && <Box component="img" src={form.logo} alt="" sx={{ height: 28, maxWidth: 100, objectFit: 'contain' }} />}
-        <Typography variant="h6">{form.appName || DEFAULTS.appName}</Typography>
-      </Stack>
-      <Stack spacing={1.5} sx={{ p: 2 }}>
-        <Typography variant="subtitle1">Sign in</Typography>
-        {form.loginMessage && <Typography variant="body2" color="text.secondary">{form.loginMessage}</Typography>}
-        <Box>
-          <Box component="span" sx={{ display: 'inline-block', px: 2, py: 0.75, borderRadius: 1, bgcolor: primary, color: palette.getContrastText(primary), fontWeight: 500 }}>
-            Sign in
-          </Box>
+    <Alert severity="warning">
+      <Typography variant="body2" sx={{ mb: 0.5 }}>
+        Some text would be hard to read (WCAG asks for {MIN_CONTRAST}:1 or more):
+      </Typography>
+      {problems.map((p) => <div key={`${p.name}-${p.what}`}>{p.name}: {p.what.toLowerCase()} is {ratioText(p.ratio)}.</div>)}
+      <Typography variant="body2" sx={{ mt: 0.5 }}>Choose a darker or lighter color for that mode.</Typography>
+    </Alert>
+  );
+}
+
+// One mode of the preview, drawn with the real theme for that mode. The button is a real button that does nothing when pressed,
+// so its hover and pressed colors can be tried out.
+function Preview({ branding, mode }) {
+  const theme = useMemo(() => makeTheme(branding, mode), [branding, mode]);
+  const header = HEX.test(branding.headerColor) ? branding.headerColor : brandPrimary(branding, mode);
+  return (
+    <ThemeProvider theme={theme}>
+      <Stack spacing={0.5}>
+        <Typography variant="overline" color="text.secondary">{mode === 'dark' ? 'Dark mode' : 'Light mode'}</Typography>
+        <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1, overflow: 'hidden', bgcolor: 'background.default', color: 'text.primary' }}
+          aria-label={`${mode === 'dark' ? 'Dark mode' : 'Light mode'} preview`}>
+          <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 2, py: 1.5, bgcolor: header, color: theme.palette.getContrastText(header) }}>
+            {branding.logo && <Box component="img" src={branding.logo} alt="" sx={{ height: 28, maxWidth: 100, objectFit: 'contain' }} />}
+            <Typography variant="h6">{branding.appName || DEFAULTS.appName}</Typography>
+          </Stack>
+          <Stack spacing={1.5} sx={{ p: 2 }}>
+            <Typography variant="subtitle1">Sign in</Typography>
+            {/* Shows the faces the font has: regular, bold, italic and bold italic. */}
+            <Typography variant="body2">Regular, <b>bold</b>, <i>italic</i> and <b><i>bold italic</i></b>.</Typography>
+            {branding.loginMessage && <Typography variant="body2" color="text.secondary">{branding.loginMessage}</Typography>}
+            <Typography variant="body2" sx={{ color: 'primary.main' }}>A link looks like this.</Typography>
+            <Box>
+              <Button variant="contained" type="button" onClick={(e) => e.preventDefault()}>Sign in</Button>
+            </Box>
+          </Stack>
         </Box>
       </Stack>
-    </Box>
+    </ThemeProvider>
   );
 }
 
@@ -56,9 +97,12 @@ export default function BrandingTab() {
   useEffect(() => {
     api('/admin/settings/branding').then(setForm).catch((e) => setErrors([e.message]));
   }, []);
+  // The preview shows the chosen font before it is saved, so it loads under its own id, apart from the site's font.
+  useFontStylesheet(form?.fontFamily, 'preview-font');
 
   if (!form) return errors.length ? <Alert severity="error">{errors[0]}</Alert> : null;
   const set = (key, value) => setForm((f) => ({ ...f, [key]: value }));
+  const branding = previewable(form);
 
   function pickLogo(e) {
     const file = e.target.files?.[0];
@@ -102,10 +146,14 @@ export default function BrandingTab() {
                   Use this name everywhere the product is named: messages, help and generated files. When off, those keep the default name. The header, sign-in page and browser title always use the name above.
                 </Typography>
               </Stack>
-              <ColorField label="Primary color" value={form.primaryColor} onChange={(v) => set('primaryColor', v)} fallback={DEFAULTS.primaryColor}
-                helperText="Buttons, links and highlights." />
+              <ColorField label="Primary color, light mode" value={form.primaryColor} onChange={(v) => set('primaryColor', v)} fallback={DEFAULTS.primaryColor}
+                helperText="Buttons, links and highlights in light mode." />
+              <ColorField label="Primary color, dark mode" value={form.darkPrimaryColor} onChange={(v) => set('darkPrimaryColor', v)} fallback={DEFAULTS.darkPrimaryColor}
+                helperText="Buttons, links and highlights in dark mode. The light-mode color is not used there." />
+              <ContrastWarnings form={form} />
               <ColorField label="Header color" value={form.headerColor} onChange={(v) => set('headerColor', v)} fallback={DEFAULTS.primaryColor}
-                helperText="Leave empty to use the primary color." />
+                helperText="Leave empty to use the primary color of the mode." />
+              <FontSettings value={form.fontFamily} onChange={(v) => set('fontFamily', v)} />
               <Stack direction="row" spacing={2} alignItems="center">
                 {form.logo && <Box component="img" src={form.logo} alt="Current logo" sx={{ height: 40, maxWidth: 160, objectFit: 'contain' }} />}
                 <input ref={fileInput} type="file" hidden accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml" onChange={pickLogo} data-testid="logo-input" />
@@ -119,10 +167,11 @@ export default function BrandingTab() {
                 <Button onClick={() => setForm((f) => ({ ...f, ...DEFAULTS }))}>Reset to defaults</Button>
               </Stack>
             </Stack>
-            <Stack spacing={1}>
+            <Stack spacing={2}>
               <Typography variant="overline" color="text.secondary">Preview</Typography>
-              <Preview form={form} />
-              <Typography variant="caption" color="text.secondary">Changes apply to everyone after you save.</Typography>
+              <Preview branding={branding} mode="light" />
+              <Preview branding={branding} mode="dark" />
+              <Typography variant="caption" color="text.secondary">Changes apply to everyone after you save. The button can be pressed to see its colors, and it goes nowhere.</Typography>
             </Stack>
           </Box>
         </CardContent>

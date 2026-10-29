@@ -220,7 +220,7 @@ test('people with a different permission cannot use the tools', async () => {
 test('export: parts follow the permissions, secrets never leave, and zip carries users.csv', async () => {
   const json = await admin.call('/api/admin/export/download?include=config,users,groups,integrations');
   assert.equal(json.status, 200);
-  assert.match(json.headers.get('content-disposition'), /simpleidp-export-.*\.json/);
+  assert.match(json.headers.get('content-disposition'), /pons-identity-export-.*\.json/);
   const doc = json.json;
   assert.equal(doc.format, 'simpleidp-export');
   assert.deepEqual(doc.parts, ['config', 'users', 'groups', 'integrations']);

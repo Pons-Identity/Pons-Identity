@@ -206,6 +206,7 @@ function createApp() {
 
   app.use(csrf);
   app.use('/api/login-page', require('./routes/login-page'));
+  app.use('/api/branding', require('./routes/fonts'));
   app.use('/api', require('./routes/api'));
   app.use(require('./routes/auth'));
   app.use('/admin', require('./routes/admin'));

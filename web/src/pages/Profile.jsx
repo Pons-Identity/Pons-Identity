@@ -1,21 +1,18 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Alert, Box, Button, Card, CardContent, Chip, Stack, TextField, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
+import { Alert, Box, Button, Card, CardContent, Chip, Stack, TextField, Typography } from '@mui/material';
 import { api } from '../api/client.js';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { safeNext } from '../safeNext.js';
 import CopyButton from '../components/CopyButton.jsx';
-import OwnActivity from '../components/OwnActivity.jsx';
 import PersonalEmailCard from '../components/PersonalEmailCard.jsx';
 import FactorsCard from '../components/FactorsCard.jsx';
 import PasswordChangeInfo from '../components/PasswordChangeInfo.jsx';
 import { PasswordGuidance } from '../components/PasswordStrength.jsx';
 import PassphraseGenerator from '../components/PassphraseGenerator.jsx';
-import { useThemeMode } from '../components/BrandedTheme.jsx';
 
-// Self-service profile: password, authenticator (MFA) and color theme.
+// Self-service profile: password and multi-factor (MFA) sign-in.
 export default function Profile() {
-  const { mode, setMode } = useThemeMode();
   const { session, refresh } = useAuth();
   const navigate = useNavigate();
   const [params] = useSearchParams();
@@ -40,17 +37,6 @@ export default function Profile() {
       setState({ user: r.user, enroll: r.enroll });
       setNotice(r.notice || message);
       setCode('');
-    } catch (e) {
-      setError(e.message);
-    }
-  }
-
-  async function requireMfaNext() {
-    setError('');
-    setNotice('');
-    try {
-      const r = await api('/account/mfa/forget', { method: 'POST', body: {} });
-      setNotice(r.browsers ? 'You will be asked for your second factor at your next sign-in.' : 'No browser was remembering a second factor. You will be asked at your next sign-in.');
     } catch (e) {
       setError(e.message);
     }
@@ -148,36 +134,7 @@ export default function Profile() {
 
       <FactorsCard />
 
-      <Card variant="outlined">
-        <CardContent>
-          <Stack spacing={2} alignItems="flex-start">
-            <Typography variant="h6" component="h2">Remembered browsers</Typography>
-            <Typography color="text.secondary">
-              A browser where you completed a second factor may skip it again for a while, as your sign-in rules allow.
-              Use this to be asked for it at your next sign-in, from every browser.
-            </Typography>
-            <Button variant="outlined" onClick={requireMfaNext}>Require MFA at my next sign-in</Button>
-          </Stack>
-        </CardContent>
-      </Card>
-
       <PersonalEmailCard />
-
-      <OwnActivity />
-
-      <Card variant="outlined">
-        <CardContent>
-          <Stack spacing={2}>
-            <Typography variant="h6" component="h2">Color theme</Typography>
-            <ToggleButtonGroup exclusive value={mode} onChange={(_, m) => m && setMode(m)} aria-label="Color theme" sx={{ alignSelf: 'flex-start' }}>
-              <ToggleButton value="system">System</ToggleButton>
-              <ToggleButton value="light">Light</ToggleButton>
-              <ToggleButton value="dark">Dark</ToggleButton>
-            </ToggleButtonGroup>
-            <Typography variant="body2" color="text.secondary">Saved in this browser.</Typography>
-          </Stack>
-        </CardContent>
-      </Card>
     </Stack>
   );
 }
