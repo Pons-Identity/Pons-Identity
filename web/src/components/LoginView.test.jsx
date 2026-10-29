@@ -14,6 +14,15 @@ test('the sign-in view draws the built-in background behind the card, with its f
   expect(container.querySelector('.idp-card')).toBeInTheDocument();
 });
 
+test('a solid background color replaces the theme color behind the built-in page, with text that reads on it', () => {
+  const branding = { appName: 'Acme', primaryColor: '#1f5fbf', loginBackgroundColor: '#101010' };
+  const { container } = render(<MemoryRouter><LoginView branding={branding} preview /></MemoryRouter>);
+  const page = container.querySelector('.idp-login');
+  expect(container.querySelector('.idp-bg')).not.toBeInTheDocument();
+  expect(getComputedStyle(page).backgroundColor).toBe('rgb(16, 16, 16)');
+  expect(getComputedStyle(page).color).toBe('rgb(255, 255, 255)');
+});
+
 test('the built-in card look applies by default, and the administrator\'s CSS comes after it so it can override it', () => {
   const branding = { appName: 'Acme', primaryColor: '#1f5fbf' };
   const { container } = render(<MemoryRouter><LoginView branding={branding} css={'.idp-card { border-radius: 4px; }'} /></MemoryRouter>);

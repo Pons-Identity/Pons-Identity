@@ -28,13 +28,16 @@ function SignInPage({ branding, template = '', css = '', assets = {}, federation
   const html = useMemo(() => (template ? renderTemplate(template, { branding: { ...branding, primaryColor: primary }, federation, federationHref, recovery, assets, preview }) : ''),
     [template, branding, primary, federation, federationHref, recovery, assets, preview]);
   const vars = { '--idp-primary': primary, '--idp-header': branding.headerColor || primary };
-  const wrapper = { minHeight: preview ? 460 : '100vh', position: 'relative', overflow: 'hidden', color: 'text.primary' };
+  const wrapper = { minHeight: preview ? 460 : '100vh', position: 'relative', overflow: 'hidden' };
 
   // The built-in page's background picture, behind the card. Blur spreads the picture past the edges so no blank border shows.
   const { logo, wordmark, background } = signInImages(branding, assets);
   const bgUrl = template ? '' : background;
-  // Without a picture, the page is a static color derived from the primary color; a picture covers it anyway.
-  const backdrop = bgUrl ? 'background.default' : signInBackdrop(primary, mode);
+  // A solid color chosen by the administrator replaces the theme color, and the text outside the card takes whichever of black and
+  // white reads on it. Without a picture or a solid color, the page is a static color derived from the primary color.
+  const solid = template || bgUrl ? '' : branding.loginBackgroundColor;
+  const backdrop = bgUrl ? 'background.default' : solid || signInBackdrop(primary, mode);
+  const textColor = solid ? bestText(solid) : 'text.primary';
   const blur = Number(branding.loginBackgroundBlur) || 0;
   const bgFilter = `blur(${blur}px) brightness(${branding.loginBackgroundBrightness ?? 100}%) contrast(${branding.loginBackgroundContrast ?? 100}%)`;
 
@@ -115,7 +118,7 @@ function SignInPage({ branding, template = '', css = '', assets = {}, federation
   const mainSx = template ? { flex: 1 } : { flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' };
 
   return (
-    <Box className="idp-login" style={vars} sx={{ ...wrapper, bgcolor: backdrop, display: 'flex', flexDirection: 'column' }}>
+    <Box className="idp-login" style={vars} sx={{ ...wrapper, bgcolor: backdrop, color: textColor, display: 'flex', flexDirection: 'column' }}>
       {bgUrl && (
         <div className="idp-bg" aria-hidden style={{
           position: 'absolute', inset: blur ? `-${blur * 2}px` : 0, zIndex: 0,

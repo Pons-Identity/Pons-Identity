@@ -10,7 +10,8 @@ const FEATURED = ['Inter', 'Roboto', 'Open Sans', 'Lato', 'Source Sans 3', 'Noto
 const CATALOG_URL = 'https://fonts.google.com/metadata/fonts';
 const CSS_URL = 'https://fonts.googleapis.com/css2';
 const FILE_HOST = 'fonts.gstatic.com';
-const CATALOG_KEY = 'google_fonts';
+// The key is the catalog's own: a copy kept under an older key (which once held only the featured families) is never read.
+const CATALOG_KEY = 'google_fonts_catalog';
 // The catalog is refreshed from Google when someone looks at it and the copy kept here is more than a day old.
 const CATALOG_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_FILE = 4 * 1024 * 1024;

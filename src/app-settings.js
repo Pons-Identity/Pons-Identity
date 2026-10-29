@@ -93,8 +93,9 @@ const BRANDING_DEFAULTS = {
   loginNoticeColor: 'white',
   loginNoticeAlign: 'center',
   // The built-in page's background: an uploaded image's file name ('' = none), and how it is drawn. 100 brightness and contrast
-  // and 0 blur leave the image as it is.
+  // and 0 blur leave the image as it is. Without a picture or a solid color ('' = none, #rrggbb), the background follows the theme.
   loginBackground: '',
+  loginBackgroundColor: '',
   loginBackgroundBlur: 0,
   loginBackgroundBrightness: 100,
   loginBackgroundContrast: 100,
@@ -163,6 +164,7 @@ function parseBranding(body) {
     loginNoticeColor: text(body.loginNoticeColor) || BRANDING_DEFAULTS.loginNoticeColor,
     loginNoticeAlign: text(body.loginNoticeAlign) || BRANDING_DEFAULTS.loginNoticeAlign,
     loginBackground: text(body.loginBackground),
+    loginBackgroundColor: text(body.loginBackgroundColor).toLowerCase(),
     logoImage: text(body.logoImage),
     wordmarkImage: text(body.wordmarkImage),
     loginLogoImage: text(body.loginLogoImage),
@@ -187,6 +189,8 @@ function parseBranding(body) {
       errors.push(`The ${label.toLowerCase()} must be an image uploaded for the sign-in page.`);
     }
   }
+  if (out.loginBackgroundColor && !COLOR_RE.test(out.loginBackgroundColor)) errors.push('Background color must look like #1f5fbf, or be empty to use the theme.');
+  if (out.loginBackground && out.loginBackgroundColor) errors.push('Choose a background picture or a background color, not both.');
   if (out.appName.length > 40) errors.push('Product name must be 40 characters or fewer.');
   if (!COLOR_RE.test(out.primaryColor)) errors.push('Primary color must look like #1f5fbf.');
   if (!COLOR_RE.test(out.darkPrimaryColor)) errors.push('Dark-mode primary color must look like #7cb4ff.');

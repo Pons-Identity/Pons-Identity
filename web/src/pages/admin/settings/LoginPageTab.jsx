@@ -117,7 +117,7 @@ export default function LoginPageTab() {
   const [previewMode, setPreviewMode] = useState('light');
   const [images, setImages] = useState([]);
   const [fonts, setFonts] = useState([]);
-  const [bg, setBg] = useState({ loginBackground: '', loginBackgroundBlur: 0, loginBackgroundBrightness: 100, loginBackgroundContrast: 100 });
+  const [bg, setBg] = useState({ loginBackground: '', loginBackgroundColor: '', loginBackgroundBlur: 0, loginBackgroundBrightness: 100, loginBackgroundContrast: 100 });
   const [roles, setRoles] = useState({ loginLogoImage: '', loginWordmarkImage: '' });
   const [notice, setNotice] = useState({ loginNotice: '', loginNoticePlacement: 'below-card', loginNoticePanel: true, loginNoticeColor: 'white', loginNoticeAlign: 'center' });
 
@@ -147,7 +147,7 @@ export default function LoginPageTab() {
       setTemplate(b.loginTemplate || '');
       setCss(b.loginCss || '');
       setBg({
-        loginBackground: b.loginBackground || '', loginBackgroundBlur: b.loginBackgroundBlur ?? 0,
+        loginBackground: b.loginBackground || '', loginBackgroundColor: b.loginBackgroundColor || '', loginBackgroundBlur: b.loginBackgroundBlur ?? 0,
         loginBackgroundBrightness: b.loginBackgroundBrightness ?? 100, loginBackgroundContrast: b.loginBackgroundContrast ?? 100,
       });
     }).catch((e) => setErrors([e.message]));

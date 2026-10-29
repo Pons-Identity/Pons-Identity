@@ -62,6 +62,15 @@ async function signIn(username, password) {
 const FONT = woff2('bold-italic');
 const upload = (admin, query, data = FONT) => admin(`/api/admin/settings/fonts?${query}`, { method: 'POST', body: data, type: 'application/octet-stream' });
 
+test('a copy of the Google list kept under an older key is not read, so every family is found', async () => {
+  const admin = await signIn('admin', 'adminpass123');
+  appSettings.write('google_fonts', { at: new Date().toISOString(), families: [{ family: 'Inter', category: '', variants: ['regular'] }] });
+  const before = GOOGLE.catalogCalls;
+  const list = await admin('/api/admin/settings/google-fonts');
+  assert.equal(GOOGLE.catalogCalls, before + 1);
+  assert.deepEqual(list.json.families.map((f) => f.family), ['Inter', 'Lora']);
+});
+
 test('the Google list is refreshed from Google when stale, and says which common families are installed', async () => {
   const admin = await signIn('admin', 'adminpass123');
   const list = await admin('/api/admin/settings/google-fonts');
@@ -90,7 +99,7 @@ test('a common Google family is downloaded with the axes it has, and only those 
 
 test('when Google cannot be reached, the copy kept here is shown as stale, and nothing is installed without it', async () => {
   const admin = await signIn('admin', 'adminpass123');
-  appSettings.write('google_fonts', { at: '2020-01-01T00:00:00.000Z', families: [{ family: 'Lora', category: 'Serif', variants: ['regular'] }] });
+  appSettings.write('google_fonts_catalog', { at: '2020-01-01T00:00:00.000Z', families: [{ family: 'Lora', category: 'Serif', variants: ['regular'] }] });
   GOOGLE.down = true;
   try {
     const list = await admin('/api/admin/settings/google-fonts');
@@ -98,7 +107,7 @@ test('when Google cannot be reached, the copy kept here is shown as stale, and n
     assert.equal(list.json.stale, true);
     assert.match(list.json.error, /ENOTFOUND/);
     // Without the copy, the list cannot be shown at all.
-    db.run("DELETE FROM settings WHERE key = 'google_fonts'");
+    db.run("DELETE FROM settings WHERE key = 'google_fonts_catalog'");
     const none = await admin('/api/admin/settings/google-fonts');
     assert.equal(none.status, 502);
     assert.match(none.json.errors[0], /Could not reach Google Fonts/);

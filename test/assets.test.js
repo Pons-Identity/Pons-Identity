@@ -94,6 +94,23 @@ test('the built-in page background is an uploaded image, drawn with blur, bright
   assert.equal((await admin('/api/admin/settings/assets/photo.jpg', { method: 'DELETE' })).status, 404);
 });
 
+test('the built-in page background can be a solid color instead of a picture, and the two are never both kept', async () => {
+  const admin = await signIn('admin', 'adminpass123');
+  const put = (extra) => admin('/api/admin/settings/branding', { method: 'PUT', body: { appName: 'Acme ID', primaryColor: '#1f5fbf', ...extra } });
+
+  assert.equal((await put({ loginBackgroundColor: 'teal' })).status, 400);
+  assert.equal((await put({ loginBackground: 'photo.jpg', loginBackgroundColor: '#112233' })).status, 400);
+
+  const saved = await put({ loginBackgroundColor: '#1F5FBF' });
+  assert.equal(saved.status, 200, saved.text);
+  assert.equal(saved.json.loginBackgroundColor, '#1f5fbf');
+  assert.equal(saved.json.loginBackground, '');
+  assert.equal(appSettings.publicBranding().loginBackgroundColor, '#1f5fbf');
+
+  // Back to the theme color: an empty color keeps no background of its own.
+  assert.equal((await put({ loginBackgroundColor: '' })).json.loginBackgroundColor, '');
+});
+
 test('the stylesheet names every installed font, with a class for each, and one family can still be asked for alone', async () => {
   const uploadFont = (admin, family, name) => admin(`/api/admin/settings/fonts?${new URLSearchParams({ family, style: 'normal', weight: '400', name })}`,
     { method: 'POST', body: Buffer.concat([Buffer.from('wOF2'), Buffer.alloc(16)]), type: 'application/octet-stream' });

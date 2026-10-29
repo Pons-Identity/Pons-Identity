@@ -5,6 +5,7 @@ import { api } from '../../../api/client.js';
 import { useNotify } from '../../../components/Notify.jsx';
 
 const MAX_IMAGE = 2 * 1024 * 1024;
+const HEX = /^#[0-9a-fA-F]{6}$/;
 
 // Pictures for the sign-in page. A file is kept under its own name, which is how the page refers to it: `<img src="logo.png">` in
 // HTML, `url('logo.png')` in CSS. `images` is the list the server has ({ name, url, bytes }); `onChange` gets the new list.
@@ -86,35 +87,69 @@ export function ImageLibrary({ images, onChange }) {
   );
 }
 
-// The background behind the built-in sign-in page's card: a picture, with blur, dimming (brightness) and contrast. Only the built-in
-// layout draws it; a custom layout puts a picture in its own CSS.
+// The background behind the built-in sign-in page's card: the theme's color (the default), a picture, or a solid color. A picture is
+// drawn with blur, dimming (brightness) and contrast. Only the built-in layout draws it; a custom layout puts its own in its CSS.
+// A picture and a solid color are never both kept: choosing one clears the other.
+const BACKGROUND_KINDS = [['theme', 'Theme color'], ['image', 'Picture'], ['color', 'Solid color']];
+const DEFAULT_SOLID = '#ffffff';
+
 export function BackgroundControls({ value, onChange, images }) {
   const set = (key, v) => onChange({ ...value, [key]: v });
+  const [kind, setKind] = useState(() => (value.loginBackground ? 'image' : value.loginBackgroundColor ? 'color' : 'theme'));
   const blurOn = value.loginBackgroundBlur > 0;
   const dimOn = value.loginBackgroundBrightness < 100;
+
+  function pick(next) {
+    setKind(next);
+    onChange({
+      ...value,
+      loginBackground: next === 'image' ? value.loginBackground : '',
+      loginBackgroundColor: next === 'color' ? value.loginBackgroundColor || DEFAULT_SOLID : '',
+    });
+  }
+
   return (
     <Stack spacing={2}>
-      <TextField select label="Background picture" value={value.loginBackground} onChange={(e) => set('loginBackground', e.target.value)}
-        helperText={images.length ? 'Fills the page behind the sign-in card on the built-in layout.' : 'Upload a picture above to use it as the background.'}>
-        <MenuItem value="">None</MenuItem>
-        {images.map((a) => <MenuItem key={a.name} value={a.name}>{a.name}</MenuItem>)}
+      <TextField select label="Background" value={kind} onChange={(e) => pick(e.target.value)}
+        helperText="The theme color follows the primary color. A picture or a solid color is drawn on the built-in layout.">
+        {BACKGROUND_KINDS.map(([id, label]) => <MenuItem key={id} value={id}>{label}</MenuItem>)}
       </TextField>
-      <FormControlLabel label="Blur the background"
-        control={<Switch checked={blurOn} disabled={!value.loginBackground} onChange={(e) => set('loginBackgroundBlur', e.target.checked ? 6 : 0)} />} />
-      {blurOn && (
-        <Slider aria-label="Blur amount in pixels" min={1} max={30} step={1} valueLabelDisplay="auto" value={value.loginBackgroundBlur}
-          onChange={(_, v) => set('loginBackgroundBlur', v)} marks={[{ value: 1, label: '1 px' }, { value: 30, label: '30 px' }]} />
+      {kind === 'image' && (
+        <TextField select label="Background picture" value={value.loginBackground} onChange={(e) => set('loginBackground', e.target.value)}
+          helperText={images.length ? 'Fills the page behind the sign-in card on the built-in layout.' : 'Upload a picture above to use it as the background.'}>
+          {images.map((a) => <MenuItem key={a.name} value={a.name}>{a.name}</MenuItem>)}
+        </TextField>
       )}
-      <FormControlLabel label="Dim the background"
-        control={<Switch checked={dimOn} disabled={!value.loginBackground} onChange={(e) => set('loginBackgroundBrightness', e.target.checked ? 70 : 100)} />} />
-      {dimOn && (
-        <Slider aria-label="Brightness of the background in percent" min={20} max={100} step={1} valueLabelDisplay="auto" value={value.loginBackgroundBrightness}
-          valueLabelFormat={(v) => `${v}%`} onChange={(_, v) => set('loginBackgroundBrightness', v)} />
+      {kind === 'color' && (
+        <Stack direction="row" spacing={1} alignItems="center">
+          <TextField label="Background color" value={value.loginBackgroundColor} onChange={(e) => set('loginBackgroundColor', e.target.value)}
+            placeholder={DEFAULT_SOLID} error={Boolean(value.loginBackgroundColor) && !HEX.test(value.loginBackgroundColor)}
+            helperText="A hex color such as #1f5fbf. The text on the page is set to black or white to read on it." />
+          <Box component="input" type="color" aria-label="Background color picker" value={HEX.test(value.loginBackgroundColor) ? value.loginBackgroundColor : DEFAULT_SOLID}
+            onChange={(e) => set('loginBackgroundColor', e.target.value)}
+            sx={{ display: 'block', flexShrink: 0, boxSizing: 'border-box', width: 56, minWidth: 56, height: 56, p: 0.5, border: 1, borderColor: 'divider', borderRadius: 1, bgcolor: 'transparent' }} />
+        </Stack>
       )}
-      <Typography variant="body2" color="text.secondary">Contrast: 100% leaves the picture as it is. Brightness below 100% dims it.</Typography>
-      <Slider aria-label="Contrast of the background in percent" min={50} max={150} step={1} valueLabelDisplay="auto" value={value.loginBackgroundContrast}
-        valueLabelFormat={(v) => `${v}%`} disabled={!value.loginBackground} onChange={(_, v) => set('loginBackgroundContrast', v)}
-        marks={[{ value: 100, label: '100%' }]} />
+      {kind === 'image' && (
+        <>
+          <FormControlLabel label="Blur the background"
+            control={<Switch checked={blurOn} onChange={(e) => set('loginBackgroundBlur', e.target.checked ? 6 : 0)} />} />
+          {blurOn && (
+            <Slider aria-label="Blur amount in pixels" min={1} max={30} step={1} valueLabelDisplay="auto" value={value.loginBackgroundBlur}
+              onChange={(_, v) => set('loginBackgroundBlur', v)} marks={[{ value: 1, label: '1 px' }, { value: 30, label: '30 px' }]} />
+          )}
+          <FormControlLabel label="Dim the background"
+            control={<Switch checked={dimOn} onChange={(e) => set('loginBackgroundBrightness', e.target.checked ? 70 : 100)} />} />
+          {dimOn && (
+            <Slider aria-label="Brightness of the background in percent" min={20} max={100} step={1} valueLabelDisplay="auto" value={value.loginBackgroundBrightness}
+              valueLabelFormat={(v) => `${v}%`} onChange={(_, v) => set('loginBackgroundBrightness', v)} />
+          )}
+          <Typography variant="body2" color="text.secondary">Contrast: 100% leaves the picture as it is. Brightness below 100% dims it.</Typography>
+          <Slider aria-label="Contrast of the background in percent" min={50} max={150} step={1} valueLabelDisplay="auto" value={value.loginBackgroundContrast}
+            valueLabelFormat={(v) => `${v}%`} onChange={(_, v) => set('loginBackgroundContrast', v)}
+            marks={[{ value: 100, label: '100%' }]} />
+        </>
+      )}
     </Stack>
   );
 }
