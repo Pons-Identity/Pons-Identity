@@ -140,4 +140,16 @@ for (const group of groups || []) {
 }
 return added;`,
   },
+  {
+    name: 'sendEmail',
+    description: 'Sends an email through the email provider in Settings → Messaging. Takes { to, subject, text }; subject defaults to "Message". Throws if the provider refuses it or the address was sent too many messages. Needs the messaging scope. Returns true.',
+    inputs: [{ name: 'to', variable: 'to' }, { name: 'subject', variable: 'subject' }, { name: 'text', variable: 'text' }],
+    script: String.raw`return await mail.send({ to, subject, text });`,
+  },
+  {
+    name: 'sendSms',
+    description: 'Sends a text message. Takes { to, text }, where to is a number such as +15551234567 (toE164 formats one). Throws if the provider refuses it or the number was sent too many messages. Needs the messaging scope. Returns true.',
+    inputs: [{ name: 'to', variable: 'to' }, { name: 'text', variable: 'text' }],
+    script: String.raw`return await sms.send({ to, text });`,
+  },
 ];

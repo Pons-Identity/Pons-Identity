@@ -64,7 +64,7 @@ test('sign in as the administrator', async () => {
 test('the starter functions are in place from the first start', async () => {
   const { functions: list } = (await admin.call(`${API}/functions`)).json;
   const names = list.map((f) => f.name);
-  for (const n of ['normalizeEmail', 'splitName', 'toE164', 'parseBoolean', 'chunk', 'requestJson', 'restCall', 'findOrCreateUser', 'addToGroups']) {
+  for (const n of ['normalizeEmail', 'splitName', 'toE164', 'parseBoolean', 'chunk', 'requestJson', 'restCall', 'findOrCreateUser', 'addToGroups', 'sendEmail', 'sendSms']) {
     assert.ok(names.includes(n), `missing starter ${n}`);
   }
   assert.equal(list.find((f) => f.name === 'normalizeEmail').created_by, 'starter');
@@ -100,6 +100,29 @@ test('starter functions behave as their descriptions say', async () => {
   assert.deepEqual(out.batches, [[1, 2], [3, 4], [5]]);
   assert.equal(out.unique.length, 2);
   assert.equal(out.full, 'Sam');
+});
+
+test('sendEmail and sendSms pass the message to the provider, and need the messaging scope', async () => {
+  const messaging = require('../src/messaging');
+  const sent = [];
+  const orig = messaging.send;
+  messaging.send = async (channel, to, msg) => { sent.push({ channel, to, msg }); };
+  try {
+    const r = await direct(`const e = await fn.sendEmail({ to: 'sam@example.net', subject: 'Welcome', text: 'Hi Sam' });
+const s = await fn.sendSms({ to: '+15551234567', text: 'Your badge is ready.' });
+return { e, s };`, { scopes: ['messaging'] });
+    assert.equal(r.status, 'ok', JSON.stringify(r.error));
+    assert.deepEqual(JSON.parse(r.result), { e: true, s: true });
+    assert.deepEqual(sent.map((m) => [m.channel, m.to, m.msg.subject, m.msg.text]), [
+      ['email', 'sam@example.net', 'Welcome', 'Hi Sam'],
+      ['sms', '+15551234567', 'Message', 'Your badge is ready.'],
+    ]);
+  } finally {
+    messaging.send = orig;
+  }
+  const denied = await direct("return await fn.sendSms({ to: '+15551234567', text: 'x' });", { scopes: [] });
+  assert.equal(denied.status, 'error');
+  assert.match(denied.error.message, /messaging/);
 });
 
 test('restCall sends the method, path, query and token to the API, and returns the status and data', async () => {

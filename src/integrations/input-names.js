@@ -23,6 +23,8 @@ const EXTRA = [
   { name: 'outcome', description: 'Event: "success", or "failure" for a failed sign-in.' },
   { name: 'request', description: 'An HTTP request: { url, method, headers, body }.' },
   { name: 'size', description: 'How many items go in each part.' },
+  { name: 'subject', description: 'An email subject line.' },
+  { name: 'to', description: 'Who a message goes to: an email address, or a phone number such as +15551234567 for a text.' },
   { name: 'password', description: 'A password to set, checked against the password policy.' },
   { name: 'personal_email', description: 'A recovery address, kept separate from the organizational ones.' },
   { name: 'scheduled_for', description: 'Schedule: the ISO time the run was due.' },
