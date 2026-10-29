@@ -29,6 +29,7 @@ const attrs = require('../attributes');
 const duo = require('../duo');
 const totp = require('../totp');
 const fonts = require('../fonts');
+const assets = require('../assets');
 const { verifyPasswordAsync, dummyPasswordHash, BusyError, hashPassword, fingerprints } = require('../crypto');
 const throttle = require('../throttle');
 const security = require('../security-settings');
@@ -143,6 +144,8 @@ router.get('/session', (req, res) => {
       id: user.id, username: user.username, display_name: user.display_name, is_admin: permissions.length > 0, permissions,
       // True after an administrator enforced new password rules: the front end sends the person to choose a new password.
       password_change_required: Boolean(user.password_change_required),
+      // The person's own color theme ('light', 'dark' or 'system'): the front end applies it on every device.
+      color_mode: user.active ? user.color_mode : 'system',
       manages_groups: user.active ? acl.delegatedGroups(user.id).length > 0 : false,
       self_service: user.active ? acl.available(user.id).length > 0 : false,
       hosts_guests: user.active ? guests.canHost(user) || guests.guestsOf(user.id).length > 0 : false,
@@ -665,6 +668,14 @@ router.post('/account/password', requireLogin, async (req, res, forward) => {
 
 // The rules the signed-in person's password must meet, for the change-password form.
 router.get('/account/password-rules', requireLogin, (req, res) => res.json(policies.passwordGuidance(req.user.id)));
+
+// Saves the signed-in person's color theme to their account (the speed dial and the profile page both use it).
+router.post('/account/color-mode', requireLogin, (req, res) => {
+  const mode = req.body?.color_mode;
+  if (!['light', 'dark', 'system'].includes(mode)) return res.status(400).json({ error: 'Choose light, dark or system.' });
+  db.run('UPDATE users SET color_mode = ? WHERE id = ?', mode, req.user.id);
+  res.json({ color_mode: mode });
+});
 
 // Asks for the second factor again at the next password sign-in, from every browser (the remember period ends at once).
 router.post('/account/mfa/forget', requireLogin, (req, res) => {
@@ -2523,6 +2534,29 @@ const protectionView = () => ({
   roles: db.all('SELECT id, name FROM roles ORDER BY key = \'admin\' DESC, name'),
   groups: db.all('SELECT id, name FROM groups ORDER BY name'),
   emailConfigured: messaging.configured('email'),
+});
+
+// Images for the sign-in page (src/assets.js). One image per request, as the raw body, with its file name in the query.
+const assetUpload = express.raw({ type: 'application/octet-stream', limit: '3mb' });
+const auditAssets = (req, detail) => auditLog.admin('settings.assets', { actor: auditLog.who(req.user), target: { type: 'settings', name: 'sign-in-images' }, detail });
+
+admin.get('/settings/assets', need('branding.manage'), (req, res) => res.json({ assets: assets.list() }));
+
+admin.post('/settings/assets', need('branding.manage'), (req, res, next) => assetUpload(req, res, (err) => {
+  if (err) return fail(res, `That image is larger than ${assets.MAX_IMAGE / (1024 * 1024)} MB.`, 413);
+  return next();
+}), (req, res) => {
+  try {
+    const name = assets.upload(req.query.name, req.body);
+    auditAssets(req, { uploaded: name });
+    res.json({ assets: assets.list(), name });
+  } catch (e) { fail(res, e.message, e.status || 500); }
+});
+
+admin.delete('/settings/assets/:name', need('branding.manage'), (req, res) => {
+  if (!assets.remove(req.params.name)) return fail(res, 'That image is not uploaded.', 404);
+  auditAssets(req, { removed: req.params.name });
+  res.json({ assets: assets.list() });
 });
 
 admin.get('/settings/login-page-protection', need('branding.manage'), (req, res) => res.json(protectionView()));

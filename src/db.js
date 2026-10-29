@@ -611,6 +611,8 @@ addMissingColumns('policies', [['password_policy_id', 'INTEGER REFERENCES passwo
 // A personal (non-organizational) email address used only to recover a forgotten password. Not part of the profile fields, so it is
 // never released to applications or shown in the directory API.
 addMissingColumns('users', [['personal_email', TEXT], ['personal_email_verified', 'INTEGER NOT NULL DEFAULT 0']]);
+// The person's color theme: 'light', 'dark' or 'system' (follow the operating system). Used on every device they sign in from.
+addMissingColumns('users', [['color_mode', "TEXT NOT NULL DEFAULT 'system'"]]);
 db.exec("CREATE UNIQUE INDEX IF NOT EXISTS users_directory_external ON users (directory_id, external_id) WHERE external_id != ''");
 // Memberships of Grouper groups: pinned = an administrator added the user (Grouper can never remove it),
 // via_grouper = Grouper provides it. A row stays while either is set.
@@ -1188,6 +1190,8 @@ addMissingColumns('integrations', [['logging', "TEXT NOT NULL DEFAULT ''"], ['ap
 addMissingColumns('integration_functions', [['inputs', "TEXT NOT NULL DEFAULT '[]'"]]);
 // file_dirs: the directories of the files module this integration may use besides its own folder, as JSON grants.
 addMissingColumns('integrations', [['file_dirs', "TEXT NOT NULL DEFAULT '[]'"]]);
+// home_dir: the folder of the files module that relative paths in the script are in, or '' for the integration's own folder.
+addMissingColumns('integrations', [['home_dir', "TEXT NOT NULL DEFAULT ''"]]);
 // node: the server that ran it. finished_at: when it ended ('' while it is running; status is 'running' until then).
 addMissingColumns('integration_runs', [['node', "TEXT NOT NULL DEFAULT ''"], ['finished_at', "TEXT NOT NULL DEFAULT ''"]]);
 
@@ -1260,6 +1264,14 @@ CREATE TABLE IF NOT EXISTS font_files (
   created_at TEXT NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS font_files_face ON font_files (family, style, weight, unicode_range);
+-- Images uploaded for the sign-in page (src/assets.js), referred to by file name from the page's HTML and CSS.
+CREATE TABLE IF NOT EXISTS site_assets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  mime TEXT NOT NULL,
+  data BLOB NOT NULL,
+  created_at TEXT NOT NULL
+);
 `);
 
 const all =(sql, ...p) => db.prepare(sql).all(...p);

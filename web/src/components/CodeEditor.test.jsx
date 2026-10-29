@@ -14,7 +14,8 @@ test('the editor has File, Edit and Go menus and a footer with the cursor positi
   expect(within(toolbar).getByRole('button', { name: 'Edit' })).toBeInTheDocument();
   expect(within(toolbar).getByRole('button', { name: 'Go' })).toBeInTheDocument();
   expect(screen.getByText('Ln 1, Col 1')).toBeInTheDocument();
-  expect(screen.getByText('2 lines · JavaScript')).toBeInTheDocument();
+  expect(screen.getByText('2 lines')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'JavaScript' })).toBeInTheDocument();
   expect(screen.getByRole('textbox', { name: 'Script' })).toHaveTextContent('return a;');
 });
 
@@ -29,7 +30,7 @@ test('the Edit menu selects all, and Go to line and Find open their panels', asy
   editor({ onChange: vi.fn() });
   await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
   await userEvent.click(screen.getByRole('menuitem', { name: 'Select all' }));
-  await waitFor(() => expect(screen.getByText('2 lines · JavaScript')).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText('2 lines')).toBeInTheDocument());
 
   await userEvent.click(screen.getByRole('button', { name: 'Go' }));
   await userEvent.click(screen.getByRole('menuitem', { name: 'Go to line…' }));

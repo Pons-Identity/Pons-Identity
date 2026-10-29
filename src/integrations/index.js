@@ -60,7 +60,8 @@ const view = (r, { script = true } = {}) => ({
   run_groups: db.all('SELECT g.id, g.name FROM integration_run_groups x JOIN groups g ON g.id = x.group_id WHERE x.integration_id = ? ORDER BY g.name COLLATE NOCASE', r.id),
   logging: logging.overrideView(r.id),
   file_dirs: parseJson(r.file_dirs, []),
-  files_folder: files.integrationHome(r.id),
+  home_dir: r.home_dir || '',
+  files_folder: homeOf(r),
   api_enabled: Boolean(r.api_enabled),
   builtin: r.builtin || '',
   deletable: require('./builtin').isDeletable(r.builtin),
@@ -114,9 +115,11 @@ function parse(body, existingId = null) {
   if (runGroups.length > 50) errors.push('At most 50 groups can be allowed to run an integration.');
   const fileDirs = files.parseGrants(body.file_dirs);
   errors.push(...fileDirs.errors);
+  const homeDir = parseHome(body.home_dir);
+  errors.push(...homeDir.errors);
   return {
     errors,
-    data: { loggingJson: lg.value, runGroups, fileDirs: JSON.stringify(fileDirs.grants), apiEnabled: body.api_enabled === true, schedules: sched, events: events.join(' '), eventInputs: JSON.stringify(eventInputs.rows), name, description: typeof body.description === 'string' ? body.description.trim().slice(0, 500) : '', enabled: body.enabled !== false, script, scopes: scopes.join(' '), timeout, inputs: JSON.stringify(table.inputs) },
+    data: { loggingJson: lg.value, runGroups, fileDirs: JSON.stringify(fileDirs.grants), homeDir: homeDir.value, apiEnabled: body.api_enabled === true, schedules: sched, events: events.join(' '), eventInputs: JSON.stringify(eventInputs.rows), name, description: typeof body.description === 'string' ? body.description.trim().slice(0, 500) : '', enabled: body.enabled !== false, script, scopes: scopes.join(' '), timeout, inputs: JSON.stringify(table.inputs) },
   };
 }
 
@@ -148,8 +151,8 @@ function create(data, by, { builtin = '' } = {}) {
   if (db.get('SELECT COUNT(*) AS n FROM integrations').n >= MAX_INTEGRATIONS) return { errors: [`At most ${MAX_INTEGRATIONS} integrations are allowed.`] };
   const now = new Date().toISOString();
   return db.tx(() => {
-    const id = Number(db.run('INSERT INTO integrations (name, description, enabled, script, scopes, timeout_seconds, events, event_inputs, inputs, logging, api_enabled, builtin, created_at, created_by, updated_at, file_dirs) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-      data.name, data.description, data.enabled ? 1 : 0, data.script, data.scopes, data.timeout, data.events, data.eventInputs, data.inputs, data.loggingJson || '', data.apiEnabled ? 1 : 0, builtin, now, by, now, data.fileDirs).lastInsertRowid);
+    const id = Number(db.run('INSERT INTO integrations (name, description, enabled, script, scopes, timeout_seconds, events, event_inputs, inputs, logging, api_enabled, builtin, created_at, created_by, updated_at, file_dirs, home_dir) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+      data.name, data.description, data.enabled ? 1 : 0, data.script, data.scopes, data.timeout, data.events, data.eventInputs, data.inputs, data.loggingJson || '', data.apiEnabled ? 1 : 0, builtin, now, by, now, data.fileDirs, data.homeDir).lastInsertRowid);
     saveSchedules(id, data.schedules);
     saveRunGroups(id, data.runGroups || []);
     return { integration: get(id) };
@@ -158,8 +161,8 @@ function create(data, by, { builtin = '' } = {}) {
 
 function update(id, data) {
   return db.tx(() => {
-    db.run('UPDATE integrations SET name = ?, description = ?, enabled = ?, script = ?, scopes = ?, timeout_seconds = ?, events = ?, event_inputs = ?, inputs = ?, logging = ?, api_enabled = ?, file_dirs = ?, updated_at = ? WHERE id = ?',
-      data.name, data.description, data.enabled ? 1 : 0, data.script, data.scopes, data.timeout, data.events, data.eventInputs, data.inputs, data.loggingJson || '', data.apiEnabled ? 1 : 0, data.fileDirs, new Date().toISOString(), Number(id));
+    db.run('UPDATE integrations SET name = ?, description = ?, enabled = ?, script = ?, scopes = ?, timeout_seconds = ?, events = ?, event_inputs = ?, inputs = ?, logging = ?, api_enabled = ?, file_dirs = ?, home_dir = ?, updated_at = ? WHERE id = ?',
+      data.name, data.description, data.enabled ? 1 : 0, data.script, data.scopes, data.timeout, data.events, data.eventInputs, data.inputs, data.loggingJson || '', data.apiEnabled ? 1 : 0, data.fileDirs, data.homeDir, new Date().toISOString(), Number(id));
     saveSchedules(Number(id), data.schedules);
     saveRunGroups(Number(id), data.runGroups || []);
     return get(id);
@@ -217,8 +220,23 @@ function hideSecrets(json) {
 
 const preview = (v) => { const s = JSON.stringify(v ?? null); return s.length > 4000 ? `${s.slice(0, 4000)}…` : s; };
 
-/** The folders and directories an integration may use: its own folder, then the ones granted to it. */
-const fileGrants = (row) => [{ path: files.integrationHome(row.id), access: 'readwrite' }, ...parseJson(row.file_dirs, [])];
+/** The folder relative paths in an integration's script are in: its home folder if one is set, else its own folder. */
+const homeOf = (row) => row.home_dir || files.integrationHome(row.id);
+
+/** A home folder as the form sends it. '' or nothing means the default. Returns { value, errors }. */
+function parseHome(input) {
+  if (input === undefined || input === null || input === '') return { value: '', errors: [] };
+  try {
+    const full = files.normalize(input);
+    if (full === '/') return { value: '', errors: ['The home folder cannot be the top folder. Choose a folder such as /exports/hr, or leave it empty.'] };
+    return { value: full, errors: [] };
+  } catch (e) {
+    return { value: '', errors: [`Home folder: ${e.message}`] };
+  }
+}
+
+/** The folders and directories an integration may use: its home folder, then the ones granted to it. */
+const fileGrants = (row) => [{ path: homeOf(row), access: 'readwrite' }, ...parseJson(row.file_dirs, [])];
 
 /**
  * Starts a run and returns at once: { runId, done }. The run is recorded as 'running' straight away, so it can be opened while it
@@ -235,7 +253,7 @@ function startRun(row, { input, trigger, actor, event = '', saveLevel }) {
   const feed = new EventEmitter();
   feed.setMaxListeners(0);
   liveRuns.set(runId, { lines, feed });
-  const done = engine.run({ id: row.id, name: row.name, script: row.script, scopes: scopesOf(row), fileGrants: fileGrants(row), timeoutSeconds: row.timeout_seconds, inputs: JSON.parse(row.inputs || '[]') },
+  const done = engine.run({ id: row.id, name: row.name, script: row.script, scopes: scopesOf(row), home: homeOf(row), fileGrants: fileGrants(row), timeoutSeconds: row.timeout_seconds, inputs: JSON.parse(row.inputs || '[]') },
     { input, trigger, event, functions: functions.sources(), live: lines, onLine: (stream, line) => feed.emit('line', stream, line) })
     .then((outcome) => {
       try { return finishRun(row, runId, outcome, { trigger, actor, event, saveLevel }); } finally {

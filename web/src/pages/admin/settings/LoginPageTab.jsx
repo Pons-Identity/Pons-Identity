@@ -1,11 +1,18 @@
-import { useEffect, useRef, useState } from 'react';
-import { Alert, Box, Button, Card, CardContent, Checkbox, Chip, FormControlLabel, FormGroup, Stack, Switch, Table, TableBody, TableCell, TableHead, TableRow, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography } from '@mui/material';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, Card, CardContent, Checkbox, Chip, FormControlLabel, FormGroup, Stack, Switch, Table, TableBody, TableCell, TableHead, TableRow, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography } from '@mui/material';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import PageIntro from './PageIntro.jsx';
 import { api } from '../../../api/client.js';
 import { useAuth } from '../../../auth/AuthContext.jsx';
 import { useNotify } from '../../../components/Notify.jsx';
 import LoginView from '../../../components/LoginView.jsx';
-import { MAX_CSS, MAX_TEMPLATE, STARTER_CSS, STARTER_TEMPLATE, VARIABLES, missingVariables, unknownVariables } from '../../../loginTemplate.js';
+import CodeEditor from '../../../components/CodeEditor.jsx';
+import { cssHover, htmlHover } from '../../../components/signInHover.js';
+import { fontClass } from '../../../components/fontClass.js';
+import { MAX_CSS, MAX_TEMPLATE, STARTER_CSS, STARTER_TEMPLATE, VARIABLES, missingVariables, sampleMarkup, unknownVariables } from '../../../loginTemplate.js';
+import { BackgroundControls, ImageLibrary } from './SignInImages.jsx';
+import ImageRolePicker from './ImageRolePicker.jsx';
+import { ClassesReference, FontsReference, ImageExamples } from './SignInHelp.jsx';
 
 function VariableTable({ onInsert }) {
   return (
@@ -97,7 +104,7 @@ function Protection() {
 export default function LoginPageTab() {
   const { session, refresh } = useAuth();
   const notify = useNotify();
-  const templateRef = useRef(null);
+  const editorTemplate = useRef(null);
   const cssFile = useRef(null);
   const [saved, setSaved] = useState(null); // full branding as stored
   const [custom, setCustom] = useState(false);
@@ -107,14 +114,45 @@ export default function LoginPageTab() {
   const [saving, setSaving] = useState(false);
   const [showFederation, setShowFederation] = useState(Boolean(session.config?.federationLogin));
   const [view, setView] = useState('preview');
+  const [previewMode, setPreviewMode] = useState('light');
+  const [images, setImages] = useState([]);
+  const [fonts, setFonts] = useState([]);
+  const [bg, setBg] = useState({ loginBackground: '', loginBackgroundBlur: 0, loginBackgroundBrightness: 100, loginBackgroundContrast: 100 });
+  const [roles, setRoles] = useState({ loginLogoImage: '', loginWordmarkImage: '' });
+  const [notice, setNotice] = useState({ loginNotice: '', loginNoticePlacement: 'below-card', loginNoticePanel: true, loginNoticeColor: 'white', loginNoticeAlign: 'center' });
+
+  // The hover tips read what they need through this, so they follow the editors' unsaved text without being rebuilt.
+  const latest = useRef({});
+  const assetUrls = Object.fromEntries(images.map((a) => [a.name, a.url]));
+  const fontClasses = Object.fromEntries(fonts.map((f) => [fontClass(f.family), f.family]));
+  latest.current = { template: custom ? template : '', branding: { ...(saved || {}), ...bg }, assetUrls, fontClasses };
+  const hoverOptions = useMemo(() => ({
+    markup: () => sampleMarkup(latest.current.template, latest.current.branding),
+    assets: () => latest.current.assetUrls,
+    fontClasses: () => latest.current.fontClasses,
+    where: () => (latest.current.template ? 'your layout' : 'the built-in page'),
+  }), []);
+  const cssHoverTips = useMemo(() => cssHover(hoverOptions), [hoverOptions]);
+  const htmlHoverTips = useMemo(() => htmlHover(hoverOptions), [hoverOptions]);
 
   useEffect(() => {
     api('/admin/settings/branding').then((b) => {
       setSaved(b);
+      setRoles({ loginLogoImage: b.loginLogoImage || '', loginWordmarkImage: b.loginWordmarkImage || '' });
+      setNotice({
+        loginNotice: b.loginNotice || '', loginNoticePlacement: b.loginNoticePlacement || 'below-card', loginNoticePanel: b.loginNoticePanel !== false,
+        loginNoticeColor: b.loginNoticeColor || 'white', loginNoticeAlign: b.loginNoticeAlign || 'center',
+      });
       setCustom(Boolean(b.loginTemplate));
       setTemplate(b.loginTemplate || '');
       setCss(b.loginCss || '');
+      setBg({
+        loginBackground: b.loginBackground || '', loginBackgroundBlur: b.loginBackgroundBlur ?? 0,
+        loginBackgroundBrightness: b.loginBackgroundBrightness ?? 100, loginBackgroundContrast: b.loginBackgroundContrast ?? 100,
+      });
     }).catch((e) => setErrors([e.message]));
+    api('/admin/settings/assets').then((r) => setImages(r.assets)).catch(() => {});
+    api('/admin/settings/fonts').then((r) => setFonts(r.families)).catch(() => {});
   }, []);
 
   if (!saved) return errors.length ? <Alert severity="error">{errors[0]}</Alert> : null;
@@ -124,14 +162,6 @@ export default function LoginPageTab() {
     ? [...unknownVariables(template).map((n) => `Unknown variable {{${n}}}.`), ...missingVariables(template).map((n) => `Missing required {{${n}}}.`),
       ...(/<\s*script/i.test(template) ? ['Scripts are not allowed.'] : [])]
     : [];
-
-  function insert(text) {
-    const el = templateRef.current;
-    if (!el) return setTemplate((t) => t + text);
-    const { selectionStart: a, selectionEnd: b } = el;
-    setTemplate(template.slice(0, a) + text + template.slice(b));
-    requestAnimationFrame(() => { el.focus(); el.setSelectionRange(a + text.length, a + text.length); });
-  }
 
   function toggleCustom(on) {
     setCustom(on);
@@ -153,7 +183,9 @@ export default function LoginPageTab() {
     setSaving(true);
     setErrors([]);
     try {
-      const b = await api('/admin/settings/branding', { method: 'PUT', body: { ...saved, loginTemplate: custom ? template : '', loginCss: css } });
+      // Fetched first, so fields changed on the Branding page since this one opened are kept.
+      const current = await api('/admin/settings/branding');
+      const b = await api('/admin/settings/branding', { method: 'PUT', body: { ...current, loginTemplate: custom ? template : '', loginCss: css, ...bg, ...roles, ...notice } });
       setSaved(b);
       await refresh();
       notify('Sign-in page saved');
@@ -169,50 +201,138 @@ export default function LoginPageTab() {
       <PageIntro title="Sign-in page" />
       <Card variant="outlined">
         <CardContent>
-          <Box sx={{ display: 'grid', gap: 4, gridTemplateColumns: { xs: '1fr', lg: '1fr 1fr' } }}>
-            <Stack component="form" spacing={2.5} onSubmit={save}>
-              {errors.length > 0 && <Alert severity="error">{errors.map((m) => <div key={m}>{m}</div>)}</Alert>}
-              <FormControlLabel control={<Switch checked={custom} onChange={(e) => toggleCustom(e.target.checked)} />} label="Use my own sign-in page layout" />
-              {custom && (
-                <>
-                  <TextField label="Page template (HTML)" multiline minRows={10} value={template} inputRef={templateRef}
-                    onChange={(e) => setTemplate(e.target.value)} error={problems.length > 0} spellCheck={false}
-                    helperText={problems.length ? problems.join(' ') : `Use the variables below. Scripts, forms and frames are removed. ${template.length.toLocaleString()} / ${MAX_TEMPLATE.toLocaleString()}`}
-                    slotProps={{ htmlInput: { maxLength: MAX_TEMPLATE, style: { fontFamily: 'monospace', fontSize: 13 } } }} />
-                  <VariableTable onInsert={insert} />
-                </>
-              )}
-              <TextField label="Custom CSS" multiline minRows={8} value={css} onChange={(e) => setCss(e.target.value)} spellCheck={false}
-                helperText={`Applies to the built-in page and to your layout, only on the sign-in page. Built-in classes: idp-card, idp-title, idp-message, idp-logo, idp-field, idp-submit, idp-error, idp-federation. No @import or remote url(). ${css.length.toLocaleString()} / ${MAX_CSS.toLocaleString()}`}
-                slotProps={{ htmlInput: { maxLength: MAX_CSS, style: { fontFamily: 'monospace', fontSize: 13 } } }} />
-              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                <input ref={cssFile} type="file" hidden accept=".css,text/css" onChange={pickCss} data-testid="css-input" />
-                <Button onClick={() => cssFile.current.click()}>Upload CSS file</Button>
-                <Button onClick={() => setCss(STARTER_CSS)}>Insert example CSS</Button>
-                {css && <Button color="warning" onClick={() => setCss('')}>Clear CSS</Button>}
-              </Stack>
-              <Stack direction="row" spacing={1}>
-                <Button type="submit" variant="contained" disabled={saving || problems.length > 0}>Save</Button>
-              </Stack>
-            </Stack>
+          <Stack spacing={4}>
             <Stack spacing={1}>
               <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" useFlexGap spacing={1}>
                 <Typography variant="overline" color="text.secondary">Preview</Typography>
-                <ToggleButtonGroup size="small" exclusive value={view} onChange={(_, v) => v && setView(v)} aria-label="Preview state">
-                  <ToggleButton value="preview">Normal</ToggleButton>
-                  <ToggleButton value="error">With error</ToggleButton>
-                </ToggleButtonGroup>
+                <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                  <ToggleButtonGroup size="small" exclusive value={previewMode} onChange={(_, v) => v && setPreviewMode(v)} aria-label="Preview color mode">
+                    <ToggleButton value="light">Light</ToggleButton>
+                    <ToggleButton value="dark">Dark</ToggleButton>
+                  </ToggleButtonGroup>
+                  <ToggleButtonGroup size="small" exclusive value={view} onChange={(_, v) => v && setView(v)} aria-label="Preview state">
+                    <ToggleButton value="preview">Normal</ToggleButton>
+                    <ToggleButton value="error">With error</ToggleButton>
+                  </ToggleButtonGroup>
+                </Stack>
               </Stack>
               <FormControlLabel control={<Switch size="small" checked={showFederation} onChange={(e) => setShowFederation(e.target.checked)} />} label="Show institution sign-in" />
               <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1, overflow: 'hidden', bgcolor: 'background.default' }} aria-label="Sign-in page preview">
-                <LoginView preview branding={saved} template={active} css={css} federation={showFederation}
+                <LoginView preview mode={previewMode} branding={{ ...saved, ...bg, ...roles, ...notice }} assets={assetUrls} template={active} css={css} federation={showFederation}
                   federationHref="#" error={view === 'error' ? 'Invalid username or password.' : ''} defaults={{ username: 'alex' }} />
               </Box>
               <Typography variant="caption" color="text.secondary">
                 The preview uses your unsaved edits and cannot sign anyone in. It does not include the hidden copy-detection beacon.
               </Typography>
             </Stack>
-          </Box>
+            <Stack component="form" spacing={2.5} onSubmit={save}>
+              {errors.length > 0 && <Alert severity="error">{errors.map((m) => <div key={m}>{m}</div>)}</Alert>}
+              <FormControlLabel control={<Switch checked={custom} onChange={(e) => toggleCustom(e.target.checked)} />} label="Use my own sign-in page layout" />
+              {custom && (
+                <>
+                  <CodeEditor ref={editorTemplate} label="Page template (HTML)" language="html" languages={['html', 'text']} fileName="sign-in-page.html"
+                    value={template} onChange={setTemplate} hover={htmlHoverTips} maxLength={MAX_TEMPLATE} wordWrap error={problems.length > 0}
+                    helperText={problems.length ? problems.join(' ') : 'Use the variables below. Scripts, forms and frames are removed. Hover a {{variable}}, class or file name for details.'} />
+                  <VariableTable onInsert={(text) => editorTemplate.current?.insert(text)} />
+                </>
+              )}
+              <CodeEditor label="Custom CSS" language="css" languages={['css', 'text']} fileName="sign-in-page.css" value={css} onChange={setCss}
+                hover={cssHoverTips} maxLength={MAX_CSS} wordWrap
+                helperText="Applies to the built-in page and to your layout, only on the sign-in page. No @import or remote url(). Hover a selector or a property to see the elements it matches." />
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                <input ref={cssFile} type="file" hidden accept=".css,text/css" onChange={pickCss} data-testid="css-input" />
+                <Button onClick={() => cssFile.current.click()}>Upload CSS file</Button>
+                <Button onClick={() => setCss(STARTER_CSS)}>Insert example CSS</Button>
+                {css && <Button color="warning" onClick={() => setCss('')}>Clear CSS</Button>}
+              </Stack>
+              <Accordion disableGutters variant="outlined" defaultExpanded>
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>Logo and logotype</AccordionSummary>
+                <AccordionDetails>
+                  <Stack spacing={3}>
+                    {saved.logo && !roles.loginLogoImage && (
+                      <Alert severity="info">A logo uploaded before is in use until you choose a sign-in logo here.</Alert>
+                    )}
+                    <ImageRolePicker label="Sign-in logo" help="A square image, shown on the sign-in card. Does not change the header."
+                      value={roles.loginLogoImage} onChange={(v) => setRoles({ ...roles, loginLogoImage: v })} images={images} onImages={setImages} />
+                    <ImageRolePicker label="Sign-in wordmark" help="A wide image of the name as text. Shown on the sign-in card when there is no sign-in logo. Does not change the header."
+                      value={roles.loginWordmarkImage} onChange={(v) => setRoles({ ...roles, loginWordmarkImage: v })} images={images} onImages={setImages} />
+                  </Stack>
+                </AccordionDetails>
+              </Accordion>
+              <Accordion disableGutters variant="outlined">
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>Images and background</AccordionSummary>
+                <AccordionDetails>
+                  <Stack spacing={3}>
+                    <ImageLibrary images={images} onChange={setImages} />
+                    <BackgroundControls value={bg} onChange={setBg} images={images} />
+                  </Stack>
+                </AccordionDetails>
+              </Accordion>
+              <Accordion disableGutters variant="outlined">
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>Text on the page</AccordionSummary>
+                <AccordionDetails>
+                  <Stack spacing={2} sx={{ alignItems: 'flex-start' }}>
+                    <TextField label="Text (Markdown)" multiline minRows={3} fullWidth value={notice.loginNotice} inputProps={{ maxLength: 2000 }}
+                      onChange={(e) => setNotice({ ...notice, loginNotice: e.target.value })}
+                      helperText="Headings, lists, **bold**, *italic*, `code` and links such as [the help desk](https://example.org/help). Up to 2,000 characters." />
+                    <ToggleButtonGroup size="small" exclusive value={notice.loginNoticePlacement} aria-label="Where the text sits"
+                      onChange={(_, v) => v && setNotice({ ...notice, loginNoticePlacement: v })}>
+                      <ToggleButton value="below-card">Below the card</ToggleButton>
+                      <ToggleButton value="footer">Footer</ToggleButton>
+                    </ToggleButtonGroup>
+                    {notice.loginNoticePlacement === 'below-card' ? (
+                      <Stack spacing={2} sx={{ alignItems: 'flex-start' }} data-testid="notice-below-options">
+                        <FormControlLabel control={<Switch checked={notice.loginNoticePanel} onChange={(e) => setNotice({ ...notice, loginNoticePanel: e.target.checked })} />}
+                          label="Show the text on a dark translucent panel" />
+                        <Stack spacing={1}>
+                          <Typography variant="body2" color="text.secondary">Text color</Typography>
+                          <ToggleButtonGroup size="small" exclusive value={notice.loginNoticeColor} aria-label="Text color"
+                            onChange={(_, v) => v && setNotice({ ...notice, loginNoticeColor: v })}>
+                            <ToggleButton value="white">White</ToggleButton>
+                            <ToggleButton value="black">Black</ToggleButton>
+                          </ToggleButtonGroup>
+                        </Stack>
+                        <Stack spacing={1}>
+                          <Typography variant="body2" color="text.secondary">Alignment</Typography>
+                          <ToggleButtonGroup size="small" exclusive value={notice.loginNoticeAlign} aria-label="Text alignment"
+                            onChange={(_, v) => v && setNotice({ ...notice, loginNoticeAlign: v })}>
+                            <ToggleButton value="left">Left</ToggleButton>
+                            <ToggleButton value="center">Centered</ToggleButton>
+                            <ToggleButton value="right">Right</ToggleButton>
+                          </ToggleButtonGroup>
+                        </Stack>
+                        {notice.loginNoticeColor === 'black' && notice.loginNoticePanel && (
+                          <Alert severity="warning">Black text on the dark panel is hard to read. Use white text with the panel, or turn the panel off.</Alert>
+                        )}
+                        {notice.loginNoticeColor === 'white' && !notice.loginNoticePanel && (
+                          <Typography variant="caption" color="text.secondary">
+                            Without the panel, white text is only readable over a dark background or a dark picture. Check the preview over your picture.
+                          </Typography>
+                        )}
+                      </Stack>
+                    ) : (
+                      <Typography variant="caption" color="text.secondary">The footer is a solid bar in the header color, with its text centered.</Typography>
+                    )}
+                  </Stack>
+                </AccordionDetails>
+              </Accordion>
+              <Accordion disableGutters variant="outlined">
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>Fonts for the page</AccordionSummary>
+                <AccordionDetails><FontsReference fonts={fonts} /></AccordionDetails>
+              </Accordion>
+              <Accordion disableGutters variant="outlined">
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>Classes of the built-in page</AccordionSummary>
+                <AccordionDetails><ClassesReference /></AccordionDetails>
+              </Accordion>
+              <Accordion disableGutters variant="outlined">
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>Using uploaded images</AccordionSummary>
+                <AccordionDetails><ImageExamples name={images[0]?.name || 'background.png'} /></AccordionDetails>
+              </Accordion>
+              <Stack direction="row" spacing={1}>
+                <Button type="submit" variant="contained" disabled={saving || problems.length > 0}>Save</Button>
+              </Stack>
+            </Stack>
+          </Stack>
         </CardContent>
       </Card>
       <Protection />

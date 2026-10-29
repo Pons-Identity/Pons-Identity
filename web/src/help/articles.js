@@ -10,6 +10,7 @@ import { PROTOCOL_ARTICLES } from './protocols.js';
 import { FEDERATION_ARTICLES } from './federation.js';
 import { SETUP_ARTICLES } from './setup.js';
 import { MIGRATION_ARTICLES } from './migration.js';
+import { BUILTIN_CLASSES, VARIABLES } from '../loginTemplate.js';
 
 // Sections appear in this order on the help index.
 // Headings on the help index, in order. Each follows a console module or one of its settings tabs.
@@ -79,10 +80,11 @@ const CORE_ARTICLES = [
     visible: everyone,
     body: [
       { steps: [
-        'Select your name in the top bar, then select **Color theme**.',
+        'Select the button in the bottom right corner of any page. It shows your current choice. Select it to open the choices.',
         'Select **System**, **Light** or **Dark**.',
       ] },
-      'Your choice is saved in this browser only.',
+      'You can also select your name in the top bar, then select **Color theme**, or choose it in the **Color theme** section of **Profile**.',
+      'When you are signed in, your choice is saved to your account and applies on every device you sign in from. When you are not signed in, it is saved in this browser only.',
     ],
   },
   {
@@ -306,7 +308,7 @@ const CORE_ARTICLES = [
     summary: 'Where integrations keep files, which directories they may use, and how other software exchanges files with them over SFTP.',
     visible: holds('integrations.view'),
     body: [
-      'The **files module** keeps the files integrations write and read, and the files other software exchanges with them. Browse it under **Integrations → Files**. A script reaches its own folder, `/integrations/integration-<id>`, with relative paths such as `users.csv`, and the directories an administrator has granted it under **Directories it may use**, with absolute paths such as `/exports/hr/users.csv`. Give the integration the **files** scope to use files, and the **sftp** scope to exchange them with another system.',
+      'The **files module** keeps the files integrations write and read, and the files other software exchanges with them. Browse it under **Integrations → Files**. A script reaches its home folder with relative paths such as `users.csv`. The home folder is set on the **Details** tab; left empty, it is the integration\'s own folder, `/integrations/integration-<id>`. The script also reaches the directories an administrator has granted it under **Directories it may use**, with absolute paths such as `/exports/hr/users.csv`. Give the integration the **files** scope to use files, and the **sftp** scope to exchange them with another system.',
       { heading: 'Write a CSV for another system' },
       { code: `const people = await idp.users.search({ limit: 200 });
 await files.write('users.csv', await csv.stringify(people, { columns: ['username', 'email', 'department'] }));
@@ -834,6 +836,96 @@ const rows = await csv.parse(await files.read('people.csv'));` },
         'Select **Save**.',
       ] },
       'Changes apply to everyone after you save. Check the **Preview** before you save.',
+    ],
+  },
+  {
+    slug: 'write-sign-in-page-html',
+    section: 'Branding',
+    title: 'Write your own sign-in page HTML',
+    summary: 'Lay out the sign-in page with your own HTML and the page variables.',
+    visible: holds('branding.manage'),
+    body: [
+      'The sign-in page is either the built-in layout or your own HTML layout. To write your own, open **Settings**, select the **Sign-in page** tab, and turn on **Use my own sign-in page layout**. The HTML goes in **Page template (HTML)**. The style goes in **Custom CSS**, as described in **Style the sign-in page with CSS**.',
+      { steps: [
+        'Write the HTML in **Page template (HTML)**. Insert a variable with its chip in the list below the editor, or type it between double braces, such as `{{app_name}}`.',
+        'Check the **Preview**. Choose **Light** or **Dark** to see the page in each mode, and **With error** to see a failed sign-in.',
+        'Select **Save**.',
+      ] },
+      { heading: 'Variables' },
+      'Each variable is replaced with its content when the page is drawn. The page needs its three form fields to sign anyone in.',
+      { table: {
+        head: ['Variable', 'What it becomes'],
+        rows: VARIABLES.map((v) => [`\`{{${v.name}}}\``, `${v.kind === 'input' ? 'Form field' : 'Display value'}${v.required ? ' (required)' : ''}. ${v.description}`]),
+      } },
+      { tip: 'The page cannot be saved without `{{username_input}}`, `{{password_input}}` and `{{submit_button}}`.' },
+      { heading: 'What is kept' },
+      'Tags for layout and text are kept: `div`, `span`, `p`, headings, lists, `label`, `input`, `button`, `img`, `table` and similar. Attributes such as `class`, `id`, `for`, `href`, `src`, `alt` and `style` are kept too. Scripts, forms, frames, embedded objects and event handlers such as `onclick` are removed.',
+      'Links may go to `https:` or `mailto:` addresses, or to a path on this site. Pictures may be uploaded pictures, named by their file name, such as `<img src="logo.png">`.',
+      { heading: 'Example' },
+      { code: `<div class="login-box">
+  {{logo}}
+  <h1>Welcome to {{app_name}}</h1>
+  <p>{{login_message}}</p>
+  {{error_message}}
+  <label for="username">Username</label>
+  {{username_input}}
+  <label for="password">Password</label>
+  {{password_input}}
+  {{submit_button}}
+  {{recovery_link}}
+  {{federation_link}}
+</div>` },
+    ],
+  },
+  {
+    slug: 'add-text-to-sign-in-page',
+    section: 'Branding',
+    title: 'Add text to the sign-in page',
+    summary: 'Show a notice, a help link or contact details under the card or in a footer.',
+    visible: holds('branding.manage'),
+    body: [
+      { steps: [
+        'Open **Settings**, select the **Sign-in page** tab, and open **Text on the page**.',
+        'Type the text in **Text (Markdown)**. Use **bold**, *italic*, lists, headings, and links such as `[the help desk](https://example.org/help)`.',
+        'Choose **Below the card** or **Footer**. Check the **Preview**, then select **Save**.',
+      ] },
+      'Links may go to web and email addresses, or to a page on this site. Any other address is shown as plain text. The text can be up to 2,000 characters.',
+    ],
+  },
+  {
+    slug: 'style-sign-in-page-css',
+    section: 'Branding',
+    title: 'Style the sign-in page with CSS',
+    summary: 'Change colors, spacing and fonts on the sign-in page, in light and dark mode.',
+    visible: holds('branding.manage'),
+    body: [
+      'The **Custom CSS** applies only to the sign-in page. It works with the built-in layout and with your own HTML. Write rules as usual. Your rules come after the built-in card look, so they override it.',
+      { steps: [
+        'Open **Settings**, select the **Sign-in page** tab, and type the rules in **Custom CSS**.',
+        'Check the **Preview** in **Light** and in **Dark**.',
+        'Select **Save**.',
+      ] },
+      { heading: 'The page itself' },
+      'Write `&` for the sign-in page itself. For example, `& { background: #f1f4f9; }` sets its background.',
+      { heading: 'Classes of the built-in page' },
+      'The built-in page is drawn with the classes below. Hover a class or a selector in the CSS editor to see what it is and which elements it matches.',
+      { table: {
+        head: ['Class', 'What it is'],
+        rows: BUILTIN_CLASSES.map((c) => [`\`.${c.name}\``, c.what]),
+      } },
+      { heading: 'Light and dark mode' },
+      'The page is drawn in light or dark mode, following the viewer\'s color theme. Its content carries the class `idp-light` or `idp-dark`, so a rule can style one mode, or both. Put the mode class before the element it styles.',
+      { code: `/* Dark mode only */
+.idp-dark .idp-card { background-color: #1e1e1e; }
+
+/* Light mode only */
+.idp-light .idp-card { background-color: #ffffff; }` },
+      'Use the **Light** and **Dark** buttons above the preview to check each mode.',
+      { heading: 'Colors, fonts and pictures' },
+      'Use `var(--idp-primary)` for the primary color and `var(--idp-header)` for the header color, as in `.idp-submit { background: var(--idp-primary); }`. Name an installed font by its family name in `font-family`, or by its class. Uploaded pictures are named by their file name, as in `url(\'background.png\')`.',
+      { heading: 'Reduced transparency' },
+      'When a viewer asks their browser for reduced transparency, the built-in card is solid and has no blur, in both modes. Your own rules are not changed by this, so a translucent background of your own stays translucent.',
+      { tip: 'The CSS can be up to 50,000 characters. `@import` and addresses of pictures on other sites are removed.' },
     ],
   },
   {

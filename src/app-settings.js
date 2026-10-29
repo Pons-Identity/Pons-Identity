@@ -84,14 +84,45 @@ const BRANDING_DEFAULTS = {
   // Custom sign-in page: an HTML template using the {{variables}} below ('' = built-in page) and CSS applied to either page.
   loginTemplate: '',
   loginCss: '',
+  // Text shown on the sign-in page, in Markdown (headings, lists, bold, italic, code and links). It sits either just below the card
+  // ('below-card') or in a footer bar ('footer').
+  loginNotice: '',
+  loginNoticePlacement: 'below-card',
+  // Text below the card: on a dark translucent panel or not, in white or black, and aligned center, left or right.
+  loginNoticePanel: true,
+  loginNoticeColor: 'white',
+  loginNoticeAlign: 'center',
+  // The built-in page's background: an uploaded image's file name ('' = none), and how it is drawn. 100 brightness and contrast
+  // and 0 blur leave the image as it is.
+  loginBackground: '',
+  loginBackgroundBlur: 0,
+  loginBackgroundBrightness: 100,
+  loginBackgroundContrast: 100,
+  // Uploaded images in the roles the pages use (src/assets.js). A logo is square and is shown in the header and on the sign-in card;
+  // a wordmark is rectangular text and is shown in the header in its place; a favicon is the browser tab icon, and when there is
+  // none the logo is converted to one in the browser.
+  logoImage: '',
+  wordmarkImage: '',
+  // The sign-in page's own logo and wordmark: they apply to the sign-in page only, not to the header.
+  loginLogoImage: '',
+  loginWordmarkImage: '',
+  faviconImage: '',
 };
+
+// Each image role, with the name the administrator sees for it. Every role names an image uploaded for the sign-in page.
+const IMAGE_ROLES = [['logoImage', 'Logo'], ['wordmarkImage', 'Wordmark'], ['loginLogoImage', 'Sign-in logo'], ['loginWordmarkImage', 'Sign-in wordmark'],
+  ['faviconImage', 'Favicon'], ['loginBackground', 'Background']];
 
 // Variables a sign-in template may use. Keep in sync with web/src/loginTemplate.js.
 const LOGIN_TEMPLATE_VARIABLES = ['username_input', 'password_input', 'submit_button', 'error_message', 'federation_link',
-  'app_name', 'logo', 'login_message', 'primary_color', 'header_color'];
+  'app_name', 'logo', 'wordmark', 'login_message', 'primary_color', 'header_color'];
 const LOGIN_TEMPLATE_REQUIRED = ['username_input', 'password_input', 'submit_button'];
 const MAX_TEMPLATE = 20000;
 const MAX_CSS = 50000;
+const MAX_NOTICE = 2000;
+const NOTICE_PLACEMENTS = ['below-card', 'footer'];
+const NOTICE_COLORS = ['white', 'black'];
+const NOTICE_ALIGNS = ['center', 'left', 'right'];
 
 const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 const LOGO_RE = /^data:image\/(png|jpeg|gif|webp|svg\+xml);base64,[A-Za-z0-9+/]+=*$/;
@@ -125,7 +156,37 @@ function parseBranding(body) {
     loginMessage: text(body.loginMessage),
     loginTemplate: typeof body.loginTemplate === 'string' ? body.loginTemplate.trim() : '',
     loginCss: typeof body.loginCss === 'string' ? body.loginCss.trim() : '',
+    loginNotice: typeof body.loginNotice === 'string' ? body.loginNotice.trim() : '',
+    // Left out by an older client, the text sits below the card.
+    loginNoticePlacement: text(body.loginNoticePlacement) || BRANDING_DEFAULTS.loginNoticePlacement,
+    loginNoticePanel: body.loginNoticePanel !== false,
+    loginNoticeColor: text(body.loginNoticeColor) || BRANDING_DEFAULTS.loginNoticeColor,
+    loginNoticeAlign: text(body.loginNoticeAlign) || BRANDING_DEFAULTS.loginNoticeAlign,
+    loginBackground: text(body.loginBackground),
+    logoImage: text(body.logoImage),
+    wordmarkImage: text(body.wordmarkImage),
+    loginLogoImage: text(body.loginLogoImage),
+    loginWordmarkImage: text(body.loginWordmarkImage),
+    faviconImage: text(body.faviconImage),
+    loginBackgroundBlur: 0,
+    loginBackgroundBrightness: 100,
+    loginBackgroundContrast: 100,
   };
+  // Numbers that were left out keep the default; a number outside its range is refused.
+  const number = (key, label, lo, hi, fallback) => {
+    if (body[key] === undefined || body[key] === '') return fallback;
+    const n = Number(body[key]);
+    if (!Number.isInteger(n) || n < lo || n > hi) errors.push(`${label} must be a whole number from ${lo} to ${hi}.`);
+    return n;
+  };
+  out.loginBackgroundBlur = number('loginBackgroundBlur', 'Background blur (px)', 0, 30, BRANDING_DEFAULTS.loginBackgroundBlur);
+  out.loginBackgroundBrightness = number('loginBackgroundBrightness', 'Background brightness (%)', 20, 150, BRANDING_DEFAULTS.loginBackgroundBrightness);
+  out.loginBackgroundContrast = number('loginBackgroundContrast', 'Background contrast (%)', 50, 150, BRANDING_DEFAULTS.loginBackgroundContrast);
+  for (const [key, label] of IMAGE_ROLES) {
+    if (out[key] && !db.get('SELECT 1 FROM site_assets WHERE name = ?', out[key])) {
+      errors.push(`The ${label.toLowerCase()} must be an image uploaded for the sign-in page.`);
+    }
+  }
   if (out.appName.length > 40) errors.push('Product name must be 40 characters or fewer.');
   if (!COLOR_RE.test(out.primaryColor)) errors.push('Primary color must look like #1f5fbf.');
   if (!COLOR_RE.test(out.darkPrimaryColor)) errors.push('Dark-mode primary color must look like #7cb4ff.');
@@ -147,6 +208,10 @@ function parseBranding(body) {
     for (const v of LOGIN_TEMPLATE_REQUIRED) if (!used.includes(v)) errors.push(`Sign-in page template must include {{${v}}}.`);
     if (/<\s*script/i.test(out.loginTemplate)) errors.push('Sign-in page template cannot contain scripts.');
   }
+  if (out.loginNotice.length > MAX_NOTICE) errors.push('Sign-in page text must be 2,000 characters or fewer.');
+  if (!NOTICE_PLACEMENTS.includes(out.loginNoticePlacement)) errors.push('Sign-in page text must sit below the card or in the footer.');
+  if (!NOTICE_COLORS.includes(out.loginNoticeColor)) errors.push('Sign-in page text color must be white or black.');
+  if (!NOTICE_ALIGNS.includes(out.loginNoticeAlign)) errors.push('Sign-in page text alignment must be center, left or right.');
   if (out.loginCss.length > MAX_CSS) errors.push('Sign-in page CSS must be 50,000 characters or fewer.');
   else if (/@import|<\/?style|expression\s*\(|javascript:|url\(\s*['"]?\s*(https?:)?\/\//i.test(out.loginCss)) {
     errors.push('Sign-in page CSS cannot use @import, remote url() references, scripts or <style> tags.');
@@ -156,10 +221,29 @@ function parseBranding(body) {
 
 const saveBranding = (b) => write('branding', b);
 
+/** The address of an uploaded image by its name, or '' for none (see src/assets.js for the addresses). */
+function assetUrl(name) {
+  if (!name) return '';
+  const row = db.get('SELECT id FROM site_assets WHERE name = ?', name);
+  return row ? `/api/branding/assets/${row.id}` : '';
+}
+
 /** Branding for people who are not signed in: the custom sign-in template and CSS are served separately (see login-page-guard). */
 function publicBranding() {
   const { loginTemplate, loginCss, ...rest } = branding();
-  return { ...rest, productName: productName(), loginCustom: Boolean(loginTemplate || loginCss) };
+  // Image roles come as addresses, ready for the pages. The header's logo and wordmark are not the sign-in page's; `logo` stays the
+  // older logo upload, which the pages use until a logo image is chosen.
+  return {
+    ...rest,
+    logoUrl: assetUrl(rest.logoImage),
+    wordmarkUrl: assetUrl(rest.wordmarkImage),
+    loginLogoUrl: assetUrl(rest.loginLogoImage),
+    loginWordmarkUrl: assetUrl(rest.loginWordmarkImage),
+    faviconUrl: assetUrl(rest.faviconImage),
+    loginBackgroundUrl: assetUrl(rest.loginBackground),
+    productName: productName(),
+    loginCustom: Boolean(loginTemplate || loginCss),
+  };
 }
 
 /* ------------------------------- Global policy -------------------------------- */
@@ -420,7 +504,7 @@ function parseAuditForwarding(body, current) {
 
 const saveAuditForwarding = (cfg) => write('audit_forwarding', cfg);
 
-module.exports = { read, write, duo, saveDuo, grouper, parseGrouper, saveGrouper, grouperActivity, recordGrouperActivity, branding, productName, parseBranding, saveBranding, publicBranding, loginPageProtection, parseLoginPageProtection, saveLoginPageProtection, BRANDING_DEFAULTS, LOGIN_TEMPLATE_VARIABLES,
+module.exports = { IMAGE_ROLES, assetUrl, read, write, duo, saveDuo, grouper, parseGrouper, saveGrouper, grouperActivity, recordGrouperActivity, branding, productName, parseBranding, saveBranding, publicBranding, loginPageProtection, parseLoginPageProtection, saveLoginPageProtection, BRANDING_DEFAULTS, LOGIN_TEMPLATE_VARIABLES,
   federationIdp, parseFederationIdp, saveFederationIdp, federationKeys, saveFederationKeys, AFFILIATIONS, EPPN_SOURCES, FEDERATION_DEFAULTS,
   federationSp, parseFederationSp, saveFederationSp, federationSpKeys, saveFederationSpKeys, PROVISIONING,
   forwarding, auditForwardingSinks, auditForwardingView, parseAuditForwarding, saveAuditForwarding, globalPasswordRules, saveGlobalPasswordRules, globalPolicy, saveGlobalPolicy };

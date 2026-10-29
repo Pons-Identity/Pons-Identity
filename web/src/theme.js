@@ -1,4 +1,4 @@
-import { createTheme } from '@mui/material/styles';
+import { createTheme, darken, lighten } from '@mui/material/styles';
 import { MIN_CONTRAST, bestText, contrastRatio } from './contrast.js';
 
 const systemPrefersDark = () => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-color-scheme: dark)').matches;
@@ -34,6 +34,14 @@ export function resolvedMode(mode = 'system') {
 /** The primary color for a mode ('light' or 'dark'): the dark-mode one in dark mode, the light one otherwise. */
 export function brandPrimary(branding = {}, mode = 'light') {
   return mode === 'dark' ? (branding.darkPrimaryColor || DEFAULT_DARK_PRIMARY) : (branding.primaryColor || DEFAULT_PRIMARY);
+}
+
+/**
+ * The sign-in page's backdrop when it has no picture: a light tint of the primary color in light mode, a deep shade of it in dark
+ * mode. Related to the theme color, but not the same as it.
+ */
+export function signInBackdrop(primary, mode = 'light') {
+  return mode === 'dark' ? darken(primary, 0.7) : lighten(primary, 0.85);
 }
 
 // Administrators set the colors and the system font under Admin > Settings > Branding. The primary color is used in light mode

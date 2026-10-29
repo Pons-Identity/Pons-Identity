@@ -16,7 +16,6 @@ const GOOGLE = { catalogCalls: 0, cssUrls: [], down: false };
 const catalog = ")]}'\n" + JSON.stringify({ familyMetadataList: [
   { family: 'Inter', category: 'Sans Serif', variants: ['regular', 'italic', '700', '700italic'] },
   { family: 'Lora', category: 'Serif', variants: ['regular', '400italic'] },
-  { family: 'Not Offered', category: 'Sans Serif', variants: ['regular'] },
 ] });
 const css = [
   '@font-face {\n  font-family: \'Inter\';\n  font-style: normal;\n  font-weight: 400;\n  font-display: swap;\n  src: url(https://fonts.gstatic.com/s/inter/a.woff2) format(\'woff2\');\n  unicode-range: U+0000-00FF, U+0131;\n}',
@@ -85,7 +84,7 @@ test('a common Google family is downloaded with the axes it has, and only those 
   assert.match(url, /family=Inter:ital,wght@0,400;0,700;1,400;1,700&display=swap$/);
   const inter = r.json.families.find((f) => f.family === 'Inter');
   assert.deepEqual(inter.faces.map((f) => [f.style, f.weight, f.source]), [['italic', 700, 'google'], ['normal', 400, 'google']]);
-  assert.equal((await admin('/api/admin/settings/google-fonts/Not%20Offered', { method: 'POST' })).status, 400);
+  assert.equal((await admin('/api/admin/settings/google-fonts/Not%20In%20Catalog', { method: 'POST' })).status, 400);
   assert.equal((await admin('/api/admin/settings/google-fonts/Lora', { method: 'POST' })).status, 200);
 });
 

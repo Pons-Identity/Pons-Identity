@@ -82,7 +82,7 @@ function run(integration, { input = null, trigger = 'manual', event = '', perms 
   if (running >= MAX_CONCURRENT) return Promise.resolve(finish('error', undefined, { message: 'Too many integrations are running at once. Try again shortly.' }));
 
   const timeoutSeconds = Math.min(Math.max(Number(integration.timeoutSeconds) || TIMEOUT.default, TIMEOUT.min), TIMEOUT.max);
-  const ctx = { integration: { id: integration.id, name: integration.name }, scopes: new Set(integration.scopes), grants: integration.fileGrants || [], used: {}, perms: perms || new Set() };
+  const ctx = { integration: { id: integration.id, name: integration.name, home: integration.home }, scopes: new Set(integration.scopes), grants: integration.fileGrants || [], used: {}, perms: perms || new Set() };
 
   running++;
   return new Promise((resolve) => {

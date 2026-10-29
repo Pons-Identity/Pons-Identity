@@ -10,8 +10,9 @@ import FactorsCard from '../components/FactorsCard.jsx';
 import PasswordChangeInfo from '../components/PasswordChangeInfo.jsx';
 import { PasswordGuidance } from '../components/PasswordStrength.jsx';
 import PassphraseGenerator from '../components/PassphraseGenerator.jsx';
+import ColorThemeControl from '../components/ColorThemeControl.jsx';
 
-// Self-service profile: password and multi-factor (MFA) sign-in.
+// Self-service profile: password, color theme and multi-factor (MFA) sign-in.
 export default function Profile() {
   const { session, refresh } = useAuth();
   const navigate = useNavigate();
@@ -90,6 +91,15 @@ export default function Profile() {
             ) : (
               <Typography color="text.secondary">Your password is managed by your directory.</Typography>
             )}
+          </Stack>
+        </CardContent>
+      </Card>
+
+      <Card variant="outlined">
+        <CardContent>
+          <Stack spacing={2}>
+            <Typography variant="h6" component="h2">Color theme</Typography>
+            <ColorThemeControl />
           </Stack>
         </CardContent>
       </Card>

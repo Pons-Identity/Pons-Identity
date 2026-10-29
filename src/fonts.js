@@ -3,9 +3,9 @@ const appSettings = require('./app-settings');
 const { safeFetchText, safeFetchBytes } = require('./safe-fetch');
 
 // Fonts the IdP serves to every page. Files are kept in the database and served from this server, so a browser never contacts
-// Google and the content security policy needs no outside hosts. Google is asked only about the families listed here, so an
-// administrator cannot make the server fetch an arbitrary name.
-const GOOGLE_FAMILIES = ['Inter', 'Roboto', 'Open Sans', 'Lato', 'Source Sans 3', 'Noto Sans', 'Montserrat', 'Poppins',
+// Google and the content security policy needs no outside hosts. Google is asked only about families in its own catalog, so an
+// administrator cannot make the server fetch an arbitrary name. The featured families are the ones offered first.
+const FEATURED = ['Inter', 'Roboto', 'Open Sans', 'Lato', 'Source Sans 3', 'Noto Sans', 'Montserrat', 'Poppins',
   'Merriweather', 'Nunito', 'Raleway', 'Work Sans', 'IBM Plex Sans', 'Playfair Display', 'Lora', 'Fira Sans'];
 const CATALOG_URL = 'https://fonts.google.com/metadata/fonts';
 const CSS_URL = 'https://fonts.googleapis.com/css2';
@@ -56,11 +56,9 @@ function formatOf(buf) {
 function parseCatalog(text) {
   // The metadata is prefixed with an anti-hijacking guard line.
   const json = JSON.parse(text.replace(/^\)\]\}'\s*/, ''));
-  const byName = new Map((Array.isArray(json.familyMetadataList) ? json.familyMetadataList : []).map((f) => [f.family, f]));
-  return GOOGLE_FAMILIES.filter((name) => byName.has(name)).map((name) => {
-    const f = byName.get(name);
-    return { family: name, category: f.category || '', variants: Array.isArray(f.variants) ? f.variants.map(String) : ['regular'] };
-  });
+  return (Array.isArray(json.familyMetadataList) ? json.familyMetadataList : []).filter((f) => f && f.family)
+    .map((f) => ({ family: String(f.family), category: f.category || '', variants: Array.isArray(f.variants) ? f.variants.map(String) : ['regular'] }))
+    .sort((a, b) => a.family.localeCompare(b.family));
 }
 
 async function refreshCatalog() {
@@ -90,7 +88,7 @@ async function googleCatalog() {
     }
   }
   const have = installedGoogle();
-  return { ...out, families: out.families.map((f) => ({ ...f, installed: have.has(f.family.toLowerCase()) })) };
+  return { ...out, featured: FEATURED, families: out.families.map((f) => ({ ...f, installed: have.has(f.family.toLowerCase()) })) };
 }
 
 // A Google variant name ("regular", "700", "700italic") as a face.
@@ -133,7 +131,7 @@ function parseFaces(css) {
 /** Downloads a common Google family's files into this server. Reinstalling replaces the earlier download. Returns the family name. */
 async function installGoogle(requested) {
   const entry = (await googleCatalog()).families.find((f) => f.family === requested);
-  if (!entry) throw reject('That is not one of the Google Fonts offered here.');
+  if (!entry) throw reject('That is not a Google Font.');
   const { text } = await upstream('Google Fonts', () => net.text(`${CSS_URL}?family=${cssFamilyParam(entry.family, entry.variants)}&display=swap`,
     { headers: { 'user-agent': BROWSER_UA }, maxBytes: 256 * 1024, timeoutMs: 20000 }));
   const faces = parseFaces(text).filter((f) => new URL(f.url).hostname === FILE_HOST);
@@ -245,14 +243,28 @@ function installed() {
   return out;
 }
 
-/** The @font-face rules for one family. Empty when it is not installed, so a stale link does no harm. */
-function familyCss(requested) {
-  const rows = db.all('SELECT id, family, style, weight, unicode_range, format FROM font_files WHERE family = ? COLLATE NOCASE ORDER BY style, weight, unicode_range', requested);
-  return rows.map((r) => {
+/**
+ * The class name that sets a family, for use in the sign-in page's CSS and HTML: "Acme Sans" is `idp-font-acme-sans`. Kept the same
+ * as the copy in web/src/components/fontClass.js.
+ */
+const fontClass = (family) => `idp-font-${String(family).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
+
+/**
+ * The stylesheet for one family, or for every installed family when none is named: its @font-face rules (the browser downloads a
+ * file only when text uses it) and a class per family. Empty when nothing matches, so a stale link does no harm.
+ */
+function stylesheet(requested = '') {
+  const rows = requested
+    ? db.all('SELECT id, family, style, weight, unicode_range, format FROM font_files WHERE family = ? COLLATE NOCASE ORDER BY style, weight, unicode_range', requested)
+    : db.all('SELECT id, family, style, weight, unicode_range, format FROM font_files ORDER BY family COLLATE NOCASE, style, weight, unicode_range');
+  const faces = rows.map((r) => {
     const range = r.unicode_range && RANGE_RE.test(r.unicode_range) ? ` unicode-range: ${r.unicode_range};` : '';
     return `@font-face { font-family: "${r.family}"; font-style: ${r.style}; font-weight: ${r.weight}; font-display: swap;`
       + ` src: url(/api/branding/font-files/${r.id}) format("${CSS_FORMAT[r.format]}");${range} }`;
-  }).join('\n');
+  });
+  const classes = [...new Set(rows.map((r) => r.family))]
+    .map((f) => `.${fontClass(f)} { font-family: "${f}", system-ui, sans-serif; }`);
+  return [...faces, ...classes].join('\n');
 }
 
 /** One stored file, for the public font-files route: { mime, data }, or null. */
@@ -262,7 +274,7 @@ function file(id) {
 }
 
 module.exports = {
-  GOOGLE_FAMILIES, googleCatalog, installGoogle, uploadFace, removeFamily, removeFace, pruneGoogle, forgetRemoved, installed, familyCss, file,
+  FEATURED, googleCatalog, installGoogle, uploadFace, removeFamily, removeFace, pruneGoogle, forgetRemoved, installed, stylesheet, fontClass, file,
   canonical, formatOf, useNetwork,
   parseCatalog, cssFamilyParam, parseFaces, reject,
 };

@@ -404,7 +404,7 @@ const fileActor = (ctx) => `integration:${ctx.integration.name}`;
 
 // A path a script names. A relative one (such as "out.csv") is in the integration's own folder; an absolute one ("/exports/x.csv")
 // is where the files module keeps it. Either must be inside the folder or a directory granted to the integration (ctx.grants).
-const resolveFile = (ctx, p) => files.normalize(p ?? '', files.integrationHome(ctx.integration.id));
+const resolveFile = (ctx, p) => files.normalize(p ?? '', ctx.integration.home);
 const mayRead = (ctx, p) => {
   const full = resolveFile(ctx, p);
   require_(files.allows(ctx.grants, full, 'read'), `This integration may not read ${full}.`);
@@ -588,7 +588,7 @@ const FUNCTIONS = {
 };
 
 /**
- * Runs one host function for a script. `ctx` is { integration: { id, name }, scopes: Set, used: {} }. Errors a script is
+ * Runs one host function for a script. `ctx` is { integration: { id, name, home }, scopes: Set, used: {} }. Errors a script is
  * meant to see are ScriptErrors; anything else is reported generically so internals do not leak into run history.
  */
 async function call(ctx, name, args) {

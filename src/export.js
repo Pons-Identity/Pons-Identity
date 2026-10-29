@@ -101,7 +101,7 @@ function integrations() {
     timeout_seconds: i.timeout_seconds, inputs: parse(i.inputs, []), event_inputs: parse(i.event_inputs, []), events: i.events.split(' ').filter(Boolean),
     schedules: db.all('SELECT schedule FROM integration_schedules WHERE integration_id = ? ORDER BY id', i.id).map((s) => parse(s.schedule, {})),
     run_groups: db.all('SELECT g.name FROM integration_run_groups x JOIN groups g ON g.id = x.group_id WHERE x.integration_id = ? ORDER BY g.name', i.id).map((g) => g.name),
-    file_dirs: parse(i.file_dirs, []), logging: parse(i.logging, null), api_enabled: Boolean(i.api_enabled), webhook: Boolean(i.webhook_token_hash), script: i.script,
+    file_dirs: parse(i.file_dirs, []), home_dir: i.home_dir || '', logging: parse(i.logging, null), api_enabled: Boolean(i.api_enabled), webhook: Boolean(i.webhook_token_hash), script: i.script,
   }));
   const fns = db.all('SELECT * FROM integration_functions ORDER BY name').map((f) => ({ name: f.name, description: f.description, inputs: parse(f.inputs, []), script: f.script }));
   const vars = db.all('SELECT * FROM integration_variables ORDER BY name').map((v) => ({ name: v.name, description: v.description, secret: Boolean(v.secret), value: v.secret ? '' : v.value }));

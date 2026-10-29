@@ -106,6 +106,29 @@ test('an integration reaches its own folder and the directories granted to it, a
   assert.equal((await admin.call('/api/admin/integrations', { method: 'POST', body: { name: 'bad dirs', script: '', scopes: [], file_dirs: [{ path: '/a/../b', access: 'read' }] } })).status, 400);
 });
 
+test('a home folder sets where relative paths go, and an empty one keeps the integration\'s own folder', async () => {
+  const i = await make({ scopes: ['files'], home_dir: '/exports/hr/home', script: `
+    await files.write('out.csv', 'a');
+    return await files.list();` });
+  assert.equal(i.home_dir, '/exports/hr/home');
+  assert.equal(i.files_folder, '/exports/hr/home');
+  const run = await runNow(i.id, {});
+  assert.equal(run.status, 'ok', JSON.stringify(run.error));
+  assert.deepEqual(run.result.map((e) => e.path), ['/exports/hr/home/out.csv']);
+  assert.equal(files.read('/exports/hr/home/out.csv').toString(), 'a');
+
+  const own = await make({ scopes: ['files'], script: "await files.write('own.csv', 'b');" });
+  assert.equal(own.home_dir, '');
+  assert.equal(own.files_folder, `/integrations/integration-${own.id}`);
+
+  const saveHome = (home_dir) => admin.call(`/api/admin/integrations/${own.id}`, { method: 'PUT', body: { name: own.name, script: own.script, scopes: own.scopes, home_dir } });
+  const moved = await saveHome('/exports/hr/other');
+  assert.equal(moved.status, 200, moved.text);
+  assert.equal(moved.json.files_folder, '/exports/hr/other');
+  assert.equal((await saveHome('/')).status, 400);
+  assert.equal((await admin.call('/api/admin/integrations', { method: 'POST', body: { name: 'bad home', script: '', scopes: [], home_dir: '/a/../b' } })).status, 400);
+});
+
 test('administrators browse, upload, download, make folders, move and delete files', async () => {
   const put = await admin.call('/api/admin/files/upload?path=/exports/people.csv', { method: 'PUT', headers: { 'content-type': 'application/octet-stream' }, body: 'first_name,last_name\nSam,Rivera\n' });
   assert.equal(put.status, 200, put.text);

@@ -22,11 +22,11 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
   // The administrator's template and CSS are not part of the public settings; this page fetches them separately.
   const custom = session.branding.loginCustom;
-  const [page, setPage] = useState(custom ? null : { template: '', css: '' });
+  const [page, setPage] = useState(custom ? null : { template: '', css: '', assets: {} });
 
   useEffect(() => {
     if (!custom) return;
-    api('/login-page', { withCsrf: true }).then(setPage).catch(() => setPage({ template: '', css: '' }));
+    api('/login-page', { withCsrf: true }).then(setPage).catch(() => setPage({ template: '', css: '', assets: {} }));
   }, [custom]);
 
   // Signed in and no protocol redirect pending: go to the launcher.
@@ -51,7 +51,7 @@ export default function Login() {
   }
 
   return (
-    <LoginView branding={session.branding} template={page.template} css={page.css} federation={Boolean(session.config?.federationLogin)} recovery={Boolean(session.config?.passwordRecovery)}
+    <LoginView branding={session.branding} template={page.template} css={page.css} assets={page.assets} federation={Boolean(session.config?.federationLogin)} recovery={Boolean(session.config?.passwordRecovery)}
       federationHref={`/login/federation${params.has('next') ? `?next=${encodeURIComponent(next)}` : ''}`}
       error={error} busy={busy} onSubmit={submit} />
   );

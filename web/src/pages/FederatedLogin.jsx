@@ -4,6 +4,7 @@ import { Link as RouterLink, Navigate, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client.js';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { safeNext } from '../safeNext.js';
+import { signInImages } from '../components/brandImages.js';
 
 const KEY = 'federation.lastIdp';
 // Remembering the last choice is a convenience only; storage can be unavailable.
@@ -13,7 +14,8 @@ const remember = (idp) => { try { localStorage.setItem(KEY, JSON.stringify(idp))
 // Choose the institution to sign in with, then hand over to the server, which sends the browser to its identity provider.
 export default function FederatedLogin() {
   const { session } = useAuth();
-  const { appName, logo } = session.branding;
+  const { appName } = session.branding;
+  const { logo } = signInImages(session.branding);
   const [params] = useSearchParams();
   const next = safeNext(params.get('next'));
   const [query, setQuery] = useState('');

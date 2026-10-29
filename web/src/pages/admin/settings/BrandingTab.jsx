@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Alert, Box, Button, Card, CardContent, FormControlLabel, Stack, Switch, TextField, ThemeProvider, Typography } from '@mui/material';
 import PageIntro from './PageIntro.jsx';
 import { api } from '../../../api/client.js';
@@ -8,10 +8,12 @@ import useFontStylesheet from '../../../components/useFontStylesheet.js';
 import { MIN_CONTRAST } from '../../../contrast.js';
 import { brandPrimary, contrastProblems, makeTheme } from '../../../theme.js';
 import FontSettings from './FontSettings.jsx';
+import { brandImages } from '../../../components/brandImages.js';
+import BrandHeading from '../../../components/BrandHeading.jsx';
+import ImageRolePicker from './ImageRolePicker.jsx';
 
 // loginTemplate/loginCss belong to the Sign-in page tab; they ride along so saving branding never clears them.
-const DEFAULTS = { appName: 'Pons Identity', namePropagation: true, primaryColor: '#1f5fbf', darkPrimaryColor: '#7cb4ff', headerColor: '', fontFamily: '', logo: '', loginMessage: '' };
-const MAX_LOGO = 256 * 1024;
+const DEFAULTS = { appName: 'Pons Identity', namePropagation: true, primaryColor: '#1f5fbf', darkPrimaryColor: '#7cb4ff', headerColor: '', fontFamily: '', logoImage: '', wordmarkImage: '', faviconImage: '', logo: '', loginMessage: '' };
 const HEX = /^#[0-9a-fA-F]{6}$/;
 
 // A hex field with a native color picker beside it.
@@ -57,9 +59,10 @@ function ContrastWarnings({ form }) {
 
 // One mode of the preview, drawn with the real theme for that mode. The button is a real button that does nothing when pressed,
 // so its hover and pressed colors can be tried out.
-function Preview({ branding, mode }) {
+function Preview({ branding, mode, assets }) {
   const theme = useMemo(() => makeTheme(branding, mode), [branding, mode]);
   const header = HEX.test(branding.headerColor) ? branding.headerColor : brandPrimary(branding, mode);
+  const { logo, wordmark } = brandImages(branding, assets);
   return (
     <ThemeProvider theme={theme}>
       <Stack spacing={0.5}>
@@ -67,8 +70,7 @@ function Preview({ branding, mode }) {
         <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1, overflow: 'hidden', bgcolor: 'background.default', color: 'text.primary' }}
           aria-label={`${mode === 'dark' ? 'Dark mode' : 'Light mode'} preview`}>
           <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 2, py: 1.5, bgcolor: header, color: theme.palette.getContrastText(header) }}>
-            {branding.logo && <Box component="img" src={branding.logo} alt="" sx={{ height: 28, maxWidth: 100, objectFit: 'contain' }} />}
-            <Typography variant="h6">{branding.appName || DEFAULTS.appName}</Typography>
+            <BrandHeading appName={branding.appName || DEFAULTS.appName} logo={logo} wordmark={wordmark} height={28} />
           </Stack>
           <Stack spacing={1.5} sx={{ p: 2 }}>
             <Typography variant="subtitle1">Sign in</Typography>
@@ -89,13 +91,14 @@ function Preview({ branding, mode }) {
 export default function BrandingTab() {
   const { refresh } = useAuth();
   const notify = useNotify();
-  const fileInput = useRef(null);
+  const [images, setImages] = useState([]);
   const [form, setForm] = useState(null);
   const [errors, setErrors] = useState([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     api('/admin/settings/branding').then(setForm).catch((e) => setErrors([e.message]));
+    api('/admin/settings/assets').then((r) => setImages(r.assets)).catch(() => {});
   }, []);
   // The preview shows the chosen font before it is saved, so it loads under its own id, apart from the site's font.
   useFontStylesheet(form?.fontFamily, 'preview-font');
@@ -103,16 +106,7 @@ export default function BrandingTab() {
   if (!form) return errors.length ? <Alert severity="error">{errors[0]}</Alert> : null;
   const set = (key, value) => setForm((f) => ({ ...f, [key]: value }));
   const branding = previewable(form);
-
-  function pickLogo(e) {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    if (file.size > MAX_LOGO) return setErrors(['Logo must be smaller than 256 KB.']);
-    const reader = new FileReader();
-    reader.onload = () => { setErrors([]); set('logo', String(reader.result)); };
-    reader.readAsDataURL(file);
-  }
+  const assetUrls = Object.fromEntries(images.map((a) => [a.name, a.url]));
 
   async function save(e) {
     e.preventDefault();
@@ -153,13 +147,13 @@ export default function BrandingTab() {
               <ContrastWarnings form={form} />
               <ColorField label="Header color" value={form.headerColor} onChange={(v) => set('headerColor', v)} fallback={DEFAULTS.primaryColor}
                 helperText="Leave empty to use the primary color of the mode." />
+              <ImageRolePicker label="Logo" help="A square image, shown to the left of the heading in the header. Does not change the sign-in page."
+                value={form.logoImage} onChange={(v) => set('logoImage', v)} images={images} onImages={setImages} />
+              <ImageRolePicker label="Logotype (wordmark)" help="A wide image of the name as text. Shown in the header in place of the heading."
+                value={form.wordmarkImage} onChange={(v) => set('wordmarkImage', v)} images={images} onImages={setImages} />
+              <ImageRolePicker label="Favicon" help="The browser tab icon: a square PNG, JPEG, GIF or WebP. Left empty, the logo is converted to an icon."
+                value={form.faviconImage} onChange={(v) => set('faviconImage', v)} images={images} onImages={setImages} />
               <FontSettings value={form.fontFamily} onChange={(v) => set('fontFamily', v)} />
-              <Stack direction="row" spacing={2} alignItems="center">
-                {form.logo && <Box component="img" src={form.logo} alt="Current logo" sx={{ height: 40, maxWidth: 160, objectFit: 'contain' }} />}
-                <input ref={fileInput} type="file" hidden accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml" onChange={pickLogo} data-testid="logo-input" />
-                <Button onClick={() => fileInput.current.click()}>{form.logo ? 'Replace logo' : 'Upload logo'}</Button>
-                {form.logo && <Button color="warning" onClick={() => set('logo', '')}>Remove</Button>}
-              </Stack>
               <TextField label="Sign-in message" multiline minRows={2} value={form.loginMessage} onChange={(e) => set('loginMessage', e.target.value)}
                 helperText="Optional text shown above the sign-in form." slotProps={{ htmlInput: { maxLength: 300 } }} />
               <Stack direction="row" spacing={1}>
@@ -169,8 +163,8 @@ export default function BrandingTab() {
             </Stack>
             <Stack spacing={2}>
               <Typography variant="overline" color="text.secondary">Preview</Typography>
-              <Preview branding={branding} mode="light" />
-              <Preview branding={branding} mode="dark" />
+              <Preview branding={branding} assets={assetUrls} mode="light" />
+              <Preview branding={branding} assets={assetUrls} mode="dark" />
               <Typography variant="caption" color="text.secondary">Changes apply to everyone after you save. The button can be pressed to see its colors, and it goes nowhere.</Typography>
             </Stack>
           </Box>

@@ -36,3 +36,14 @@ test('recovery_link is filled only when recovery is on', () => {
   expect(renderTemplate('<p>{{recovery_link}}</p>', { branding, recovery: true })).toContain('href="/recover"');
   expect(renderTemplate('<p>{{recovery_link}}</p>', { branding, recovery: false })).not.toContain('recover');
 });
+
+test('the preview asks password managers to leave the sign-in fields alone; the real page does not', () => {
+  const branding = { appName: 'Acme', primaryColor: '#1f5fbf' };
+  const preview = renderTemplate('{{username_input}}{{password_input}}', { branding, preview: true });
+  expect(preview).toContain('data-1p-ignore');
+  expect(preview).toContain('data-lpignore="true"');
+  expect(preview).toContain('autocomplete="off"');
+  const live = renderTemplate('{{username_input}}{{password_input}}', { branding });
+  expect(live).not.toContain('data-lpignore');
+  expect(live).toContain('autocomplete="current-password"');
+});

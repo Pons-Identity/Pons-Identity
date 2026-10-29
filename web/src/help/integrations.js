@@ -44,7 +44,7 @@ export const INTEGRATION_ARTICLES = [
     body: [
       { steps: [
         'Open **Integrations** from the module menu, then select **New integration**. The form starts with a short example script and the `users:read` and `users:write` scopes ticked.',
-        'On the **Details** tab, type a **Name**. The name appears in run history and in the audit log, as `integration:<name>`.',
+        'On the **Details** tab, type a **Name**. The name appears in run history and in the audit log, as `integration:<name>`. Optionally type a **Home folder**, where relative file paths in the script go.',
         'Set **Time limit (seconds)**. It can be from 1 to 60, and the default is 10.',
         'Select **Create integration**. The other tabs open once it exists, and each one has its own **Save** and **Discard changes** buttons. You cannot switch tabs while the current one has unsaved changes.',
         'On the **Permissions** tab, under **What the script may use**, tick only the scopes the script needs. The [scope table](/help/reference-integration-limits) lists what each one allows.',

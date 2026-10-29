@@ -1,6 +1,7 @@
 const express = require('express');
 const appSettings = require('../app-settings');
 const guard = require('../login-page-guard');
+const assets = require('../assets');
 
 const router = express.Router();
 
@@ -17,7 +18,7 @@ router.get('/', (req, res) => {
     return res.status(403).json({ error: 'Not available.' });
   }
   const { loginTemplate, loginCss } = appSettings.branding();
-  res.json({ template: loginTemplate, css: loginTemplate || loginCss ? `${loginCss}\n${guard.protectionCss()}` : '' });
+  res.json({ template: loginTemplate, css: loginTemplate || loginCss ? `${loginCss}\n${guard.protectionCss()}` : '', assets: assets.urlMap() });
 });
 
 // Loaded by the beacon rule in the CSS. From this site's own page the Referer is this site; from a copy it names the copy.

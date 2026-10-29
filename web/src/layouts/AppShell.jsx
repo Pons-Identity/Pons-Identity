@@ -25,6 +25,8 @@ import { Link as RouterLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { useCan } from '../auth/permissions.js';
 import GlobalSearch from '../components/GlobalSearch.jsx';
+import { brandImages } from '../components/brandImages.js';
+import BrandHeading from '../components/BrandHeading.jsx';
 
 // Each item shows only when the user holds the permission that page needs.
 const ADMIN_LINKS = [
@@ -54,7 +56,8 @@ export default function AppShell() {
   const me = session.me;
   const can = useCan();
   const location = useLocation();
-  const { appName, logo } = session.branding;
+  const { appName } = session.branding;
+  const { logo, wordmark } = brandImages(session.branding);
   const links = ADMIN_LINKS.filter((l) => !l.permission || [].concat(l.permission).some(can));
   const currentModule = ADMIN_LINKS.find((l) => isCurrentModule(l, location.pathname));
   const CurrentModuleIcon = currentModule?.icon;
@@ -85,8 +88,7 @@ export default function AppShell() {
       <AppBar position="static" elevation={0}>
         <Toolbar sx={{ gap: 1, flexWrap: 'wrap', py: 1 }}>
           <Stack component={RouterLink} to="/" direction="row" alignItems="center" spacing={1} sx={{ textDecoration: 'none', color: 'inherit', mr: 2 }}>
-            {logo && <Box component="img" src={logo} alt="" sx={{ height: 32, maxWidth: 120, objectFit: 'contain' }} />}
-            <Typography variant="h6" color="inherit">{appName}</Typography>
+            <BrandHeading appName={appName} logo={logo} wordmark={wordmark} />
           </Stack>
           {me.is_admin && (
             <>

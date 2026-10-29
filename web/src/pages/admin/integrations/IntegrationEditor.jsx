@@ -29,7 +29,7 @@ const ACCESS_OPTIONS = [
 
 // The tabs of an integration's page. `fields` are the form fields a tab saves; a tab without them has its own actions. `saved` tabs need the integration to exist, and `manage` ones need permission to change it.
 const TABS = [
-  { key: 'details', label: 'Details', fields: ['name', 'description', 'enabled', 'timeout_seconds'] },
+  { key: 'details', label: 'Details', fields: ['name', 'description', 'enabled', 'timeout_seconds', 'home_dir'] },
   { key: 'permissions', label: 'Permissions', fields: ['scopes', 'file_dirs', 'run_groups', 'api_enabled'] },
   { key: 'triggers', label: 'Triggers', fields: ['schedules', 'events', 'event_inputs'] },
   { key: 'inputs', label: 'Inputs', fields: ['inputs'] },
@@ -46,7 +46,7 @@ const CURL = (url) => `curl -X POST ${url} \\
   -d '{"first_name":"Sam","last_name":"Rivera","email":"sam@example.net"}'`;
 
 // The form for an integration as the server has it.
-const formFrom = (i) => ({ name: i.name, description: i.description, enabled: i.enabled, script: i.script, inputs: i.inputs, scopes: i.scopes, timeout_seconds: i.timeout_seconds, schedules: i.schedules.map(newSchedule), events: i.events, event_inputs: i.event_inputs || [], run_groups: (i.run_groups || []).map((g) => g.id), api_enabled: Boolean(i.api_enabled), logging: i.logging || { inherit: true }, file_dirs: i.file_dirs || [] });
+const formFrom = (i) => ({ name: i.name, description: i.description, enabled: i.enabled, script: i.script, inputs: i.inputs, scopes: i.scopes, timeout_seconds: i.timeout_seconds, schedules: i.schedules.map(newSchedule), events: i.events, event_inputs: i.event_inputs || [], run_groups: (i.run_groups || []).map((g) => g.id), api_enabled: Boolean(i.api_enabled), logging: i.logging || { inherit: true }, file_dirs: i.file_dirs || [], home_dir: i.home_dir || '' });
 
 function Webhook({ integration, webhookBase, canManage, onChange }) {
   const notify = useNotify();
@@ -194,7 +194,7 @@ export default function IntegrationEditor() {
         setMeta({ ...m, logLevels: ['debug', 'normal', 'warning', 'error'].map((l) => ({ id: l, label: l[0].toUpperCase() + l.slice(1) })) });
         api('/admin/options').then((o) => { if (live) setGroups(o.groups || []); }).catch(() => {});
         if (isNew) {
-          const fresh = { name: '', description: '', enabled: true, script: m.starter, inputs: m.starter_inputs, scopes: ['users:read', 'users:write'], timeout_seconds: 10, schedules: [], events: [], event_inputs: [], run_groups: [], api_enabled: false, logging: { inherit: true }, file_dirs: [] };
+          const fresh = { name: '', description: '', enabled: true, script: m.starter, inputs: m.starter_inputs, scopes: ['users:read', 'users:write'], timeout_seconds: 10, schedules: [], events: [], event_inputs: [], run_groups: [], api_enabled: false, logging: { inherit: true }, file_dirs: [], home_dir: '' };
           setForm(fresh);
           setSaved(fresh);
         } else {
@@ -318,6 +318,9 @@ export default function IntegrationEditor() {
               onChange={(e) => set('timeout_seconds', Number(e.target.value))} slotProps={{ htmlInput: { min: 1, max: 60 } }} sx={{ width: 200 }} />
           </Stack>
           <TextField label="Description" value={form.description} onChange={(e) => set('description', e.target.value)} disabled={!canManage} />
+          <TextField label="Home folder" value={form.home_dir} onChange={(e) => set('home_dir', e.target.value)} disabled={!canManage}
+            placeholder={integration?.files_folder || 'Its own folder'}
+            helperText="The folder in the files module that relative paths in the script are in, such as users.csv. Leave empty to use the integration's own folder." />
           <FormControlLabel control={<Switch checked={form.enabled} onChange={(e) => set('enabled', e.target.checked)} disabled={!canManage} />} label="Turned on (a turned-off integration ignores its webhook, schedule and events)" />
         </TabForm>
         {!isNew && canManage && (
