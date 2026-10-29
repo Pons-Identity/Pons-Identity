@@ -1,0 +1,29 @@
+<%- include('_head', { title: 'Signed out', me: null, csrf: '' }) %>
+<div class="card narrow">
+  <h1>Signed out</h1>
+  <p><%= message %></p>
+  <% if (targets.length) { %><p class="muted">Notifying <%= targets.length %> connected application<%= targets.length === 1 ? '' : 's' %>…</p><% } %>
+  <p><a href="/login">Sign in again</a></p>
+</div>
+<% targets.forEach((t, i) => { %>
+<iframe name="slo<%= i %>" hidden></iframe>
+<form method="post" action="<%= t.url %>" target="slo<%= i %>" class="slo-auto">
+  <input type="hidden" name="SAMLRequest" value="<%= t.samlRequest %>">
+</form>
+<% }) %>
+<% if (final) { %>
+<form method="post" action="<%= final.url %>" id="slo-final">
+  <input type="hidden" name="SAMLResponse" value="<%= final.samlResponse %>">
+  <% if (final.relayState) { %><input type="hidden" name="RelayState" value="<%= final.relayState %>"><% } %>
+  <noscript><button>Continue</button></noscript>
+</form>
+<% } %>
+<% if (locals.redirectTo) { %><p><a id="slo-return" href="<%= redirectTo %>">Return to the application</a></p><% } %>
+<script>
+  document.querySelectorAll('form.slo-auto').forEach(function (f) { f.submit(); });
+  var fin = document.getElementById('slo-final');
+  var ret = document.getElementById('slo-return');
+  if (ret) setTimeout(function () { location.assign(ret.href); }, 1500);
+  if (fin) setTimeout(function () { fin.submit(); }, <%= targets.length ? 1500 : 0 %>);
+</script>
+<%- include('_foot') %>

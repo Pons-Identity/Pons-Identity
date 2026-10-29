@@ -1,0 +1,10 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Signing in…</title></head>
+<body onload="document.forms[0].submit()">
+<noscript><p>JavaScript is disabled. Click Continue to finish signing in.</p></noscript>
+<form method="post" action="<%= action %>">
+  <input type="hidden" name="SAMLResponse" value="<%= samlResponse %>">
+  <% if (relayState) { %><input type="hidden" name="RelayState" value="<%= relayState %>"><% } %>
+  <noscript><button>Continue</button></noscript>
+</form>
+</body></html>

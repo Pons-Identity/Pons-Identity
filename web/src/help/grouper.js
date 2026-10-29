@@ -1,0 +1,287 @@
+// Help articles for Internet2 Grouper: what it is, and how to move this IdP's groups into it.
+// Block types are described in integrations.js.
+
+import { everyone, holds } from './visibility.js';
+
+const manage = holds('grouper.manage');
+const cutover = ({ can }) => can('grouper.manage') && can('groups.manage');
+
+export const GROUPER_ARTICLES = [
+  {
+    slug: 'grouper-what-is-it',
+    section: 'Grouper',
+    title: 'What Grouper is and what it is good for',
+    summary: 'How Internet2 Grouper organizes groups, and when it is worth using with Pons Identity.',
+    visible: everyone,
+    body: [
+      'Grouper is an open-source group management system from Internet2, used mainly by universities and research organizations. It keeps the authoritative list of who belongs to which group, and it passes that membership on to other systems, including identity providers such as this one.',
+      { heading: 'How Grouper organizes groups' },
+      { bullets: [
+        '**Groups** have names such as `ref:affiliation:staff`. Each colon separates a folder, called a stem, so that group sits in the `ref:affiliation` folder.',
+        '**Memberships** can be added by hand, set by a rule, or taken from other groups. A group can include other groups, so membership can follow from one group to another.',
+        '**Composite groups** combine two groups. A union has everyone in either group, an intersection has only people in both, and a complement has people in the first group but not the second.',
+        '**Privileges** say who may administer a group, such as who may change its members (**UPDATE**), see its members (**READ**) or see it at all (**VIEW**).',
+      ] },
+      { heading: 'What it is good for' },
+      { bullets: [
+        'One authoritative set of groups for several systems, so that each application does not keep its own copy.',
+        'Groups built from rules and from other groups, such as everyone in a department except a list of people, which update by themselves as people change.',
+        'Letting the owners of a group manage it, with a record of who may change what.',
+        'Groups that applications use for access. Grouper groups can be released to applications in a SAML attribute, and they can grant roles here.',
+      ] },
+      { heading: 'Grouper and Pons Identity' },
+      'Pons Identity keeps its own groups as well. Grouper and Pons Identity can work together in three ways:',
+      { bullets: [
+        '**Grouper sends its groups here.** Grouper provisions groups and members to Pons Identity over SCIM. They appear as Grouper groups, which you cannot edit here.',
+        '**Groups you keep here are copied to Grouper.** The migration tools export or push them, so Grouper holds the same groups.',
+        '**Groups move to Grouper.** Once Grouper holds a group, you can hand it over, and from then on Grouper is the only place it is managed. See [Move your groups to Grouper](/help/grouper-migration-overview).',
+      ] },
+      { tip: 'Grouper is a large system with its own server and database. If a few groups here are enough for your applications, you may not need it. It pays off when several systems need the same groups, or when rules and delegation matter.' },
+    ],
+  },
+  {
+    slug: 'grouper-migration-overview',
+    section: 'Grouper',
+    title: 'Move your groups to Grouper',
+    summary: 'The four stages for moving this IdP\'s groups into Grouper, and what each one changes.',
+    visible: manage,
+    body: [
+      'You can move groups to Grouper in stages, and stop after any of them. To find the tools, open **Settings**, select the **Grouper** tab, and scroll to **Move groups to Grouper**.',
+      { table: {
+        head: ['Stage', 'What it does', 'Changes Grouper?', 'Changes Pons Identity?'],
+        rows: [
+          ['**Export bundle**', 'Builds CSV files and a Grouper Shell script that recreate the groups.', 'No. You run the script yourself.', 'No.'],
+          ['**Push**', 'Creates the groups and their members in a running Grouper, through its web services.', 'Yes. It only adds.', 'No.'],
+          ['**Loader feed**', 'Lets Grouper\'s SQL loader copy this IdP\'s groups while Pons Identity is still where they are managed.', 'Yes, when Grouper\'s loader runs.', 'No.'],
+          ['**Cut over**', 'Checks each group against Grouper, then makes Grouper the source of truth for the groups you choose.', 'No. The check only reads.', 'Yes. The chosen groups become read-only here.'],
+        ],
+      } },
+      { heading: 'Which groups move' },
+      'Only groups kept in Pons Identity move. Groups that already come from Grouper stay as they are, and groups from an external directory are left out, because Grouper has no copy of them to refer to.',
+      { heading: 'A suggested order' },
+      { steps: [
+        'Download the export bundle and read `unresolved.csv`. Run the script on a test Grouper first.',
+        'Push the groups to a test Grouper, and fix any failures it reports.',
+        'If Grouper should follow Pons Identity for a while, turn on the loader feed.',
+        'Check each group against Grouper, then hand the groups over. Keep the list of cutovers in mind, because you can revert one.',
+      ] },
+      { tip: 'Grouper must recognize each person by the field you choose. People it cannot match are reported, and they are left out of the groups they are in.' },
+      'The settings that every stage shares are described in [Reference: Grouper migration options](/help/grouper-migration-reference).',
+    ],
+  },
+  {
+    slug: 'grouper-export-bundle',
+    section: 'Grouper',
+    title: 'Export groups for a Grouper import',
+    summary: 'Download CSV files and a Grouper Shell script that recreate your groups in Grouper.',
+    visible: manage,
+    body: [
+      { steps: [
+        'Open **Settings**, select the **Grouper** tab, and scroll to **Move groups to Grouper**.',
+        'Select the **Export bundle** tab.',
+        'Choose **Grouper identifies people by**. Pick the field whose values Grouper\'s subject source holds, such as **Username** or **Email address**.',
+        'Set **Folder for names without \':\'**. Groups whose names have no colon are put in this folder, so with the default, `staff` becomes `simpleidp:staff`. Names that already have colons are kept as written.',
+        'Select **Preview**. It counts the groups, folders, memberships, nested groups, composites and delegated privileges, and lists what will be left out.',
+        'Select **Download bundle**.',
+      ] },
+      'Nothing is sent to Grouper from this step. Review the files first, then run the script on a test Grouper with `bin/gsh import.gsh`.',
+      { heading: 'What is in the bundle' },
+      { table: {
+        head: ['File', 'Contents'],
+        rows: [
+          ['`README.txt`', 'The counts, the files and the steps to follow.'],
+          ['`stems.csv`', 'The folders that the groups sit in.'],
+          ['`groups.csv`', 'Each group, with its Grouper name and its name here.'],
+          ['`memberships.csv`', 'Direct members, with a start and end date where one is set.'],
+          ['`nested_groups.csv`', 'Groups that sit inside another group.'],
+          ['`composites.csv`', 'Composite groups, with their type and two factors.'],
+          ['`privileges.csv`', 'Delegated privileges: ADMIN, UPDATE, READ, VIEW, OPTIN and OPTOUT.'],
+          ['`unresolved.csv`', 'Entries that could not be exported, and why.'],
+          ['`import.gsh`', 'The Grouper Shell script that applies all of the above.'],
+        ],
+      } },
+      { heading: 'Entries that are left out' },
+      'People with no value for the chosen field are left out of the memberships and privileges that need them. Each one is listed in `unresolved.csv`, with its group and the reason.',
+      { tip: 'The preview warns about groups it cannot export. A name with an empty folder level, such as `a::b`, cannot be exported. Two groups whose Grouper names differ only in capitals clash, and only the first is exported. Rename the group here and preview again.' },
+      'The script has not been run against your version of Grouper. Try it on a test Grouper first.',
+    ],
+  },
+  {
+    slug: 'grouper-push-groups',
+    section: 'Grouper',
+    title: 'Push groups to Grouper',
+    summary: 'Create groups and their members in a running Grouper through its web services.',
+    visible: manage,
+    body: [
+      { steps: [
+        'Open **Settings**, select the **Grouper** tab, scroll to **Move groups to Grouper**, and select the **Push** tab.',
+        'Type the **Web services URL** of your Grouper, such as `https://grouper.example.net/grouper-ws/servicesRest`.',
+        'Keep **API version** unless your Grouper needs another. The default is `v2_5_000`.',
+        'Type the **Username** and **Password** of a Grouper account that can create groups and assign privileges.',
+        'Choose **Look people up by**, either **Subject ID** or **Subject identifier**. Optionally type a **Subject source ID**, such as `ldap`, to limit the lookup to one of Grouper\'s subject sources.',
+        'Check **Grouper server time zone**. Membership start and end dates are read in this zone, and the default is UTC.',
+        'Select **Check connection and people**. The result says how many people Grouper found.',
+        'Select **Push to Grouper…**, then confirm.',
+      ] },
+      'While the push runs, the page shows each phase in turn: **Groups**, **Members**, **Nested groups** and **Delegated access**. Select **Cancel** to stop it.',
+      { heading: 'What a push changes' },
+      { bullets: [
+        'It only adds. A group with the same name is updated, and members are added. Members are never removed, so someone removed here stays in Grouper until Grouper removes them.',
+        'It can be run again safely. If a push is cancelled or fails part way, run it again to finish. Work already done is left as it is.',
+        'Only one push can run at a time. A second one is refused until the first finishes.',
+        'Composite groups cannot be pushed this way. Create them with the script from the export bundle.',
+        'People Grouper cannot find are left out of memberships and privileges. The check lists them.',
+      ] },
+      'Failures are listed by phase and target, with the code that Grouper returned. Fix the cause, then push again.',
+      { tip: 'The password is used only for the push, and it is cleared from the page once the push starts. Pons Identity does not save it. Changing any connection setting clears the check, so run **Check connection and people** again before you push. You need **Configure Grouper** and **View groups**.' },
+    ],
+  },
+  {
+    slug: 'grouper-loader-feed',
+    section: 'Grouper',
+    title: 'Let Grouper\'s loader follow Pons Identity',
+    summary: 'Serve your groups as a feed that Grouper\'s SQL loader reads, until you hand them over.',
+    visible: manage,
+    body: [
+      { steps: [
+        'Open **Settings**, select the **Grouper** tab, scroll to **Move groups to Grouper**, and select the **Loader feed** tab.',
+        'Set **People are identified by**, **Folder for names without \':\'** and **Subject column**. The subject column is `subject_id`, `subject_identifier` or `subject_id_or_identifier`. Optionally type a **Subject source ID**. Select **Save settings**.',
+        'Select **Create token**, and copy the token straight away. It is shown only once. Until a token exists, the feed is closed.',
+        'Select **Download starter files**. The zip holds `README.txt`, `staging.sql`, `sync.sh` and `loader-settings.txt`.',
+        'Run `staging.sql` in the database that Grouper\'s loader reads. It creates the staging tables.',
+        'Run `sync.sh` before each loader run, for example from cron. Give it the token and the database connection as environment variables, as the table below describes.',
+        'Set up Grouper\'s SQL loader with the settings in `loader-settings.txt`.',
+      ] },
+      { table: {
+        head: ['Variable', 'Purpose'],
+        rows: [
+          ['`SIMPLEIDP_FEED_TOKEN`', 'The feed token. Required.'],
+          ['`DATABASE_URL`', 'The connection string for the staging database. Required.'],
+          ['`SIMPLEIDP_FEED_URL`', 'The feed address. Defaults to the one shown on the page.'],
+          ['`ALLOW_EMPTY=1`', 'Accept a feed with no memberships. Otherwise the load is refused.'],
+          ['`MAX_SHRINK_PCT`', 'Refuse a feed that would remove more than this percentage of the current rows. The default is 50.'],
+        ],
+      } },
+      { heading: 'What the feed contains' },
+      { bullets: [
+        'Each group\'s effective members. Nested groups and composites are already resolved, and expired members are left out.',
+        'Only this IdP\'s own groups. Groups from Grouper or a directory are not included.',
+        'Loader-managed groups take their members only from the feed.',
+        'A count of people left out because they have no value for the chosen field.',
+      ] },
+      'Select **Replace token** to issue a new one. Whatever fetches the feed then stops working until it has the new token. **Revoke token** closes the feed. The page shows when the feed was last fetched.',
+      { tip: 'The starter files have not been run against your Grouper. Try them on a test Grouper first. You need **Configure Grouper** and **View groups**.' },
+    ],
+  },
+  {
+    slug: 'grouper-cutover',
+    section: 'Grouper',
+    title: 'Hand groups over to Grouper',
+    summary: 'Make Grouper the source of truth for chosen groups, and revert a cutover if needed.',
+    visible: cutover,
+    body: [
+      { steps: [
+        'Open **Settings**, select the **Grouper** tab, scroll to **Move groups to Grouper**, and select the **Cut over** tab.',
+        'Enter the Grouper connection, the same as on the **Push** tab. Then select **Load groups** to see each group, its members and what it will become.',
+        'Select **Check against Grouper**. Each group gets a status. Hover over a status to see what differs.',
+        'Tick the groups to hand over. Groups that match are ticked to start with.',
+        'Leave **Pin the members of groups that carry a role** ticked, unless you have a reason not to.',
+        'Select **Hand N groups to Grouper…**, where N is the number you ticked, then confirm.',
+      ] },
+      { table: {
+        head: ['Status', 'Meaning'],
+        rows: [
+          ['**Matches Grouper**', 'Grouper has the group, with exactly the same people.'],
+          ['**Differs**', 'Grouper has the group, but its members are not the same. Hover over the status to see who.'],
+          ['**Not in Grouper**', 'Grouper does not have the group.'],
+          ['**Not checked**', 'There is no check yet, or the last check is more than an hour old.'],
+        ],
+      } },
+      { heading: 'What changes' },
+      { bullets: [
+        'The chosen groups become read-only here. They take the name Grouper gives them, which can be different. Applications that match on the old name will see the new one.',
+        'Nested groups, composites and delegated access are removed from them, because Grouper now holds that structure. Their members are first copied in as plain members, so nobody loses access before Grouper\'s first sync.',
+        'Membership dates are removed. Anyone who is not a current member today is dropped rather than made permanent.',
+        'If you leave the pin box ticked, the members of groups that carry a role are pinned. A bad Grouper sync then cannot remove them, which protects administrators from being locked out.',
+      ] },
+      { heading: 'Before you hand groups over' },
+      { bullets: [
+        'Turn on Grouper\'s SCIM provisioning to this IdP first, so that Grouper takes over the groups it now holds.',
+        'A group that is not confirmed identical cannot be handed over unless you tick **Hand over N groups that are not confirmed identical in Grouper**. Do that only after you have checked the difference.',
+        'People with no identifier were never pushed to Grouper. They would lose the group, so give them an identifier, or leave that group here.',
+      ] },
+      { heading: 'Undo a cutover' },
+      'Under **Earlier cutovers**, select **Revert**. The groups become editable here again, with their old names and structure. Members that Grouper added since stay, and members that were added only by flattening are removed.',
+      { tip: 'Groups that changed after the cutover are skipped when you revert, and the result says which ones. The list keeps the last 20 cutovers. You need **Configure Grouper** and **Manage groups**.' },
+    ],
+  },
+  {
+    slug: 'grouper-migration-reference',
+    section: 'Grouper',
+    title: 'Reference: Grouper migration options',
+    summary: 'The options the Grouper migration tools share, and how names, privileges and composites are translated.',
+    visible: manage,
+    body: [
+      { heading: 'Grouper identifies people by' },
+      { table: {
+        head: ['Option', 'Field in Pons Identity'],
+        rows: [
+          ['Username', '`username`'],
+          ['Employee / ID number', '`employee_id`'],
+          ['Email address', '`email`'],
+          ['User principal name', '`upn`'],
+          ['GUID', '`guid`'],
+        ],
+      } },
+      'The value in this field must match a value in Grouper\'s subject source.',
+      { heading: 'Look people up by' },
+      { table: {
+        head: ['Option', 'Meaning'],
+        rows: [
+          ['Subject ID', 'The value is looked up as Grouper\'s subject ID.'],
+          ['Subject identifier', 'The value is looked up as Grouper\'s subject identifier.'],
+          ['Subject source ID', 'Limits the lookup to one subject source, such as `ldap` or `jdbc`. Leave it blank to search them all.'],
+          ['Grouper server time zone', 'The zone Grouper reads membership dates in. The default is UTC.'],
+        ],
+      } },
+      { heading: 'Folder names' },
+      'Names without a colon go into the folder you choose. The folder name may use letters, numbers, `.`, `_` and `-`, with `:` between levels. A group name cannot have an empty level.',
+      { table: {
+        head: ['Name in Pons Identity', 'Name in Grouper, with the default folder'],
+        rows: [
+          ['`staff`', '`simpleidp:staff`'],
+          ['`ref:it:admins`', '`ref:it:admins`, kept as written'],
+        ],
+      } },
+      { heading: 'Privileges' },
+      { table: {
+        head: ['In Pons Identity', 'In Grouper'],
+        rows: [
+          ['`admin`', 'ADMIN'],
+          ['`update`', 'UPDATE'],
+          ['`read`', 'READ'],
+          ['`view`', 'VIEW'],
+          ['`optin`', 'OPTIN'],
+          ['`optout`', 'OPTOUT'],
+        ],
+      } },
+      { heading: 'Composite groups' },
+      { table: {
+        head: ['In Pons Identity', 'In Grouper', 'Members are'],
+        rows: [
+          ['`union`', 'UNION', 'In either group.'],
+          ['`intersect`', 'INTERSECTION', 'In both groups.'],
+          ['`minus`', 'COMPLEMENT', 'In the first group but not the second.'],
+        ],
+      } },
+      { heading: 'Permissions' },
+      { table: {
+        head: ['Tool', 'Needs'],
+        rows: [
+          ['Export bundle, Push, Loader feed', '**Configure Grouper** and **View groups**'],
+          ['Cut over', '**Configure Grouper** and **Manage groups**'],
+        ],
+      } },
+    ],
+  },
+];

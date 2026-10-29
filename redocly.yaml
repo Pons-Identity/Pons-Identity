@@ -1,0 +1,28 @@
+# Lints and renders docs/openapi.yaml. Run `npm run docs:lint` and `npm run docs:build`.
+extends:
+  - recommended
+
+apis:
+  user-api:
+    root: docs/openapi.yaml
+    theme:
+      openapi:
+        expandResponses: '200,201'
+        pathInMiddlePanel: true
+        # System fonts only: the page is served with a CSP that allows no external requests.
+        theme:
+          typography:
+            fontFamily: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif
+            code:
+              fontFamily: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace
+            headings:
+              fontFamily: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif
+
+rules:
+  # The API is served from the same host as the console, so the server is relative.
+  no-server-example.com: off
+  no-empty-servers: off
+  operation-4xx-response: error
+  operation-operationId: error
+  operation-summary: error
+  tag-description: error

@@ -1,0 +1,25 @@
+# Example: Pons Identity behind a reverse proxy that terminates TLS.
+# SAML and federation need the public https URL, so BASE_URL must be set to it. A BASE_URL starting with https:// makes
+# the session cookie Secure and SameSite=None, which cross-site SAML posts (including the federation) require; for that
+# cookie to be sent the proxy must pass X-Forwarded-Proto: https and TRUST_PROXY must be on.
+services:
+  idp:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+      # RADIUS (Settings > RADIUS). Publish it only to the network the devices are on, e.g. "10.0.0.5:1812:1812/udp".
+      # - "1812:1812/udp"
+      # SFTP for other software (Integrations > Files, once it is turned on there). Publish it only to the network that software is on.
+      # - "10.0.0.5:2222:2222"
+    environment:
+      BASE_URL: https://idp.example.net
+      TRUST_PROXY: "true"
+      # First start: with no ADMIN_PASSWORD the setup wizard opens at BASE_URL/setup, guarded by a one-time token printed in the container log
+      # (docker compose logs idp). Set ADMIN_PASSWORD instead to create the admin account unattended and skip the wizard.
+      # ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      # SESSION_SECRET: set to keep sessions across restarts of a replaced volume; otherwise one is generated into the database.
+    volumes:
+      - idp-data:/app/data
+volumes:
+  idp-data:

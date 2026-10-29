@@ -1,0 +1,15 @@
+{
+  "protocol": "https",
+  "hostname": "localhost",
+  "port": 3443,
+  "bindAddress": "0.0.0.0",
+  "baseUrl": "",
+  "tls": true,
+  "tlsCertFile": "",
+  "tlsKeyFile": "",
+  "httpRedirectPort": 0,
+  "dbPath": "data/idp.db",
+  "adminPassword": "",
+  "sessionSecret": "",
+  "trustProxy": false
+}

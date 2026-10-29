@@ -1,0 +1,980 @@
+openapi: 3.1.0
+info:
+  title: Pons Identity User API
+  version: 1.0.0
+  summary: Create and manage local user accounts from other software.
+  description: |
+    Use this API to create, look up, change and delete **local** user accounts, to import many users at once, and to schedule
+    account changes for later. Typical callers are an HR system, a registration form or an onboarding script.
+
+    ## Authentication
+
+    Create a token in the console under **Settings → User API**. Send it on every request:
+
+    ```
+    Authorization: Bearer uat_...
+    ```
+
+    A token is shown once, when it is created. Each token has **scopes** (see the security scheme below) and an optional
+    expiry, and can be revoked at any time. Keep tokens as safe as an administrator password.
+
+    ## What a token cannot do
+
+    - It cannot reach **administrators**. Any account that holds a role is read-only through this API: it can be looked up,
+      but it cannot be changed, deleted, scheduled or have its password set. This stops a token being used to take over an
+      administrator account.
+    - It cannot change users **owned by an external directory** (LDAP or a directory feed); those are changed at their source.
+    - It cannot grant **roles**. Roles are assigned in the console.
+
+    ## Users and identifiers
+
+    Users are addressed by `id`, a GUID that never changes, not by username. A user has one **primary** email address and
+    may have others; sign-in accepts any of them. Custom `attributes` are free-form name/value text unless an administrator
+    defined the attribute with a type (number, date, yes/no, choice), in which case values are validated and may be required.
+    A **recovery** address (`personal_email`) is kept apart from the organizational addresses and is used for password
+    recovery. It must differ from them.
+
+    ## Joiners, movers and leavers
+
+    | Event | Call |
+    | --- | --- |
+    | New person | `POST /users` with the profile, `emails`, `groups` and a password or `generate_password: true`. Use `POST /users/bulk` for a batch, such as a nightly HR feed. |
+    | Profile change (department, title, manager, and so on) | `PATCH /users/{id}` with only the fields that changed. |
+    | Group membership | Not in this API. Change it in the console or with the Group API. `groups` is accepted only when a user is created. |
+    | Roles and administrator access | Not in this API. Assign them in the console. |
+    | Leaving today | `PATCH /users/{id}` with `{ "active": false }`. Their sessions end at once. |
+    | Leaving on a known date | `POST /schedules` with `action: deactivate` and `run_at`. Cancel it with `DELETE /schedules/{id}` if the date changes. |
+    | Account no longer needed | `DELETE /users/{id}`. This is permanent; deactivating keeps the record. |
+
+    ## Sessions
+
+    Setting a password, deactivating an account and deleting it all end the person's signed-in sessions immediately. Other
+    changes do not.
+
+    ## Audit trail
+
+    Every change made through the API is recorded in the audit log under the actor `user-api:<token name>`. The recorded
+    actions are `user.create`, `user.update`, `user.password_reset`, `user.delete`, `schedule.create`, `schedule.cancel`, and
+    `user.scheduled_<action>` when a scheduled change runs. A password change through `PATCH` is recorded as both
+    `user.update` and `user.password_reset`. A failed attempt to use the API is recorded as `token.auth_failure`, with the
+    method, the path and whether a token was sent. The token itself is never recorded.
+
+    ## Tokens
+
+    Tokens start with `uat_`. Give each one a name that identifies the integration that uses it: the name is what appears in
+    the audit log, and it is what groups a token's schedules. To rotate a token, create a new one, move the integration over,
+    then revoke the old one. Scheduled changes from a revoked token do not run.
+
+    ## Limits
+
+    | Limit | Value |
+    | --- | --- |
+    | Request body | 1 MB |
+    | Users in one bulk request | 1,000 |
+    | Users in one page of results | 50 by default, 200 at most |
+    | Email addresses per user | 10 |
+    | Schedules returned by `GET /schedules` | 500, newest first |
+    | Idempotency keys | Up to 200 characters; kept for 24 hours, per token |
+
+    Unknown fields in a request body are refused with 400, not ignored, so a misspelled field is never silently dropped.
+
+    ## Errors
+
+    Errors are JSON: `{ "error": "summary", "errors": ["detail", ...] }`. `errors` appears when several things are wrong.
+
+    | Status | Meaning |
+    | --- | --- |
+    | 400 | The request is not valid; see `errors`. |
+    | 401 | The token is missing, unknown, revoked or expired. |
+    | 403 | The token lacks the scope, or the account is an administrator. |
+    | 404 | No such user, group or schedule, or no such route. A schedule created by another token name is also 404. |
+    | 409 | On create, the username already exists. On change or delete, the user belongs to an external directory. |
+    | 413 | The body is over 1 MB. |
+    | 422 | An `Idempotency-Key` was reused with a different request. |
+    | 500 | Something went wrong on the server. It is logged; retry with the same `Idempotency-Key`. |
+
+    ## Retrying safely
+
+    Send an `Idempotency-Key` header (any unique string up to 200 characters, such as a UUID) on `POST` requests. If a
+    request is retried with the same key and body within 24 hours, the original response is returned again with the header
+    `Idempotent-Replay: true` and nothing is created twice. A **generated password is never repeated** in a replay, so
+    store it the first time.
+
+    Keys belong to the token that sent them, so two integrations cannot collide. The key is matched with the method, the
+    full URL and the body; reusing it for anything else returns 422. A response with a 5xx status is not kept, so that
+    request can be retried. `PATCH` and `DELETE` do not use the header.
+
+    ## Passwords
+
+    Supply a `password` or ask for one with `generate_password: true`. Every password must be at least **12 characters**,
+    and a password policy can require more: character types, restricted words, reuse and breached passwords. Policy rules
+    are checked whenever a password is set: when an account is created, in a bulk import, and when it is changed with `PATCH`.
+    A new account is held to the policy of the groups it is created in. A generated password meets that policy, is 16
+    characters or longer if the policy asks, and is returned once, in the response that created the user. Passwords are
+    stored hashed and cannot be read back.
+  contact:
+    name: Your Pons Identity administrator
+  license:
+    name: MIT
+    identifier: MIT
+servers:
+  - url: /api/v1
+    description: This server
+security:
+  - bearer: []
+tags:
+  - name: Users
+    description: Create, look up, change and delete users.
+  - name: Bulk
+    description: Create many users in one request.
+  - name: Schedules
+    description: Account changes that happen at a later time.
+  - name: Lockdown
+    description: Lock down an account that may be compromised, and end the lockdown once it is safe again.
+  - name: Integrations
+    description: Run integrations (scripts an administrator wrote) and read what they did.
+paths:
+  /users:
+    get:
+      tags: [Users]
+      operationId: listUsers
+      summary: Find users
+      description: |
+        Returns users ordered by username, 50 at a time by default. Filters combine with AND. `username` and `email` are exact,
+        case-insensitive matches; `email` also finds addresses that are not primary. `q` is a substring match on username,
+        display name or primary email. Requires scope `users:read`.
+
+        Use this to find a person's `id` from a value your system already holds, such as their email address.
+      security:
+        - bearer: [users:read]
+      parameters:
+        - name: username
+          in: query
+          description: Exact username, case-insensitive.
+          schema: { type: string }
+        - name: email
+          in: query
+          description: Exact email address, primary or not, case-insensitive.
+          schema: { type: string }
+        - name: q
+          in: query
+          description: Text found in the username, display name or primary email.
+          schema: { type: string }
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/offset'
+      responses:
+        '200':
+          description: A page of users.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [total, limit, offset, users]
+                properties:
+                  total: { type: integer, description: 'Users matching the filters, across all pages.' }
+                  limit: { type: integer }
+                  offset: { type: integer }
+                  users:
+                    type: array
+                    items: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Users]
+      operationId: createUser
+      summary: Create a user
+      description: |
+        Creates a local account. Requires scope `users:write`. The new user is active unless `active` is `false`.
+        Group names must belong to existing local groups. Membership set here is changed later in the console or the Group API.
+        Unknown fields are refused with 400. The password must meet the password policy that the account will have from the
+        groups in `groups`, which is the same policy `PATCH` checks once the account exists.
+      security:
+        - bearer: [users:write]
+      parameters:
+        - $ref: '#/components/parameters/idempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserCreate' }
+            examples:
+              withPassword:
+                summary: A user with a password
+                value:
+                  username: srivera
+                  password: correct-horse-battery
+                  first_name: Sam
+                  last_name: Rivera
+                  emails:
+                    - { email: srivera@example.net, primary: true }
+                    - sam.rivera@partner.example.org
+                  department: Underwater Basket-Weaving
+                  groups: [Staff]
+                  attributes: { badge_number: '48213' }
+              generatedPassword:
+                summary: Let the server choose a password
+                value:
+                  username: rlee
+                  generate_password: true
+                  email: rlee@example.net
+      responses:
+        '201':
+          description: The user was created.
+          headers:
+            Location:
+              description: The URL of the new user.
+              schema: { type: string, format: uri }
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/User'
+                  - type: object
+                    properties:
+                      generated_password:
+                        type: string
+                        description: Present only when `generate_password` was true. Shown once.
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: That username already exists.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '422': { $ref: '#/components/responses/IdempotencyMismatch' }
+  /users/{id}:
+    parameters:
+      - $ref: '#/components/parameters/userId'
+    get:
+      tags: [Users]
+      operationId: getUser
+      summary: Get a user
+      description: Requires scope `users:read`. Works for any user, including administrators.
+      security:
+        - bearer: [users:read]
+      responses:
+        '200':
+          description: The user.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Users]
+      operationId: updateUser
+      summary: Change a user
+      description: |
+        Changes only the fields you send; anything left out stays as it is. Requires scope `users:write`. Not available for
+        administrators (403) or directory-owned users (409).
+
+        - `email` replaces the primary address and keeps the others; `emails` replaces all of them.
+        - `personal_email` is the recovery address. A value set here is treated as verified, so password recovery can use it
+          straight away.
+        - `attributes`: a value of `null` removes that attribute.
+        - `password` is checked against the password policy that applies to the person, and is audited as a password reset.
+        - `groups` and roles cannot be changed here.
+
+        Setting a `password`, or setting `active` to `false`, ends the person's signed-in sessions.
+      security:
+        - bearer: [users:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserUpdate' }
+            examples:
+              leave:
+                summary: Deactivate someone who has left
+                value: { active: false }
+              move:
+                summary: Someone changes department and title
+                value: { department: Pottery, title: Senior foreman }
+      responses:
+        '200':
+          description: The user after the change.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: The user is managed by an external directory.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    delete:
+      tags: [Users]
+      operationId: deleteUser
+      summary: Delete a user
+      description: |
+        Permanently deletes the account and ends its sessions. Requires scope `users:write`. The `id` returns 404 afterwards.
+        To keep the record, deactivate with `PATCH` instead, which is what most leavers need.
+      security:
+        - bearer: [users:write]
+      responses:
+        '204':
+          description: Deleted.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: The user is managed by an external directory.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /users/{id}/lockdown:
+    parameters:
+      - $ref: '#/components/parameters/userId'
+    post:
+      tags: [Lockdown]
+      operationId: lockDownUser
+      summary: Lock down a compromised account
+      description: |
+        Starts the account lockdown for a person who may be compromised. It runs the built-in **Compromised account lockdown**
+        integration, which applies the steps the **Compromised account policies** set for this person: sign them out everywhere,
+        replace the password, remove their sign-in methods, forget remembered browsers, turn the account off, limit where it can
+        sign in from, and email them. The steps depend on the policies, so the same call can do more for some groups or roles.
+
+        The call returns once the run has ended, and every step it took is in the integration's run history (`run.id`). Each call
+        writes a `user.lockdown` audit entry, and the integration event **An account was locked down** fires from it.
+
+        Requires scope `users:write`. The integration must be turned on in the console (**Integrations**). Administrators and
+        accounts managed by an external directory cannot be locked down through the API.
+
+        Some steps may already have run if the lockdown fails part way. The `500` response names the run to read.
+      security:
+        - bearer: [users:write]
+      parameters:
+        - $ref: '#/components/parameters/idempotencyKey'
+      responses:
+        '200':
+          description: The lockdown ran. The account is in lockdown until it is ended with `DELETE`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LockdownResult' }
+              example:
+                user: { id: '5f0c3a1e-9d2b-4c7a-8e61-2b1f0a9c4d10', username: srivera, emails: [{ email: 'sam@example.net', primary: true }], active: false, created_at: '2026-01-14T09:30:00.000Z' }
+                lockdown: { started_at: '2026-10-25T14:02:11.000Z', started_by: 'user-api:HR sync', policy_names: ['Built-in default'], networks: [], locked_account: true }
+                run: { id: 412, status: ok }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: The integration is missing or turned off, or the account is managed by an external directory or has administrative access.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { error: 'Turn on the Compromised account lockdown integration before locking down an account.' }
+        '500':
+          description: The integration ran but did not finish. Some steps may have run; read the run named in the message.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    delete:
+      tags: [Lockdown]
+      operationId: endUserLockdown
+      summary: End an account lockdown
+      description: |
+        Ends the lockdown and turns the account back on if the lockdown turned it off. The password and sign-in methods are **not**
+        restored: the person recovers the account, or an administrator sets a password and a method for them.
+
+        Requires scope `users:write`.
+      security:
+        - bearer: [users:write]
+      responses:
+        '200':
+          description: The lockdown ended. The user, as it now is.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /users/bulk:
+    post:
+      tags: [Bulk]
+      operationId: bulkCreateUsers
+      summary: Create many users
+      description: |
+        Creates up to 1000 users in one request. Requires scope `bulk:write`.
+
+        Set `dry_run: true` to check every row and change nothing. With `on_error: skip` (the default) rows that are valid are
+        created and the rest are reported; with `abort`, **nothing** is created if any row has an error.
+
+        Each row takes the same fields as `POST /users`, and its `generate_password` is replaced by the request-level
+        `generate_passwords`, which gives a random password to every row that has none. Generated passwords come back once,
+        in `generated`.
+
+        Every row is checked, and an invalid row is reported with its `row` number. Each password must meet the password policy
+        that applies to its row's `groups`, the same as `POST /users`. The `id` in a result row is an internal number,
+        not the GUID: look up a user's GUID with `GET /users?username=`.
+      security:
+        - bearer: [bulk:write]
+      parameters:
+        - $ref: '#/components/parameters/idempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BulkRequest' }
+            examples:
+              dryRun:
+                value:
+                  dry_run: true
+                  users:
+                    - { username: casey, password: caseypassword1 }
+                    - { username: rowan, password: rowanpassword1, groups: [Staff] }
+      responses:
+        '200':
+          description: A dry run. Nothing was created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BulkResult' }
+        '201':
+          description: The import ran. See `summary` and each row's `status`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BulkResult' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /schedules:
+    get:
+      tags: [Schedules]
+      operationId: listSchedules
+      summary: List this token's schedules
+      description: |
+        Returns schedules created through this token's name, newest first, up to 500. Requires scope `schedules:write`.
+        Tokens that share a name share their schedules, so give each token a unique name.
+      security:
+        - bearer: [schedules:write]
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [pending, running, done, failed, cancelled] }
+      responses:
+        '200':
+          description: Schedules, newest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Schedule' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Schedules]
+      operationId: createSchedule
+      summary: Schedule an account change
+      description: |
+        Schedules an action for a later time. Requires scope `schedules:write`.
+
+        - `create`: send `users` (same rows as bulk create, each **with a password**; generated passwords are not available
+          because nobody would see them).
+        - `activate` / `deactivate` / `delete`: send `user_id`.
+        - `activate` / `deactivate` for a whole group: send `group` (its name). The group's members are worked out **when the
+          action runs**, not now. Administrators and directory-owned users among them are skipped.
+
+        If the token is revoked before the time arrives, the action does not run. Actions run within about a minute of `run_at`.
+
+        `run_at` must be in the future. A single-user action is refused with 400 when it is scheduled if the user is an
+        administrator or directory-owned. Scheduling is audited as `schedule.create`.
+      security:
+        - bearer: [schedules:write]
+      parameters:
+        - $ref: '#/components/parameters/idempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ScheduleRequest' }
+            examples:
+              leaver:
+                summary: Deactivate someone on their last day
+                value:
+                  action: deactivate
+                  run_at: '2026-12-18T17:00:00Z'
+                  user_id: 6c1e2c0a-5f0b-4b8e-9a43-1d8f6a3c2b10
+              group:
+                summary: Deactivate a whole group at the end of term
+                value:
+                  action: deactivate
+                  run_at: '2027-06-30T23:59:00Z'
+                  group: Spring cohort
+      responses:
+        '201':
+          description: Scheduled.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Schedule' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /schedules/{id}:
+    delete:
+      tags: [Schedules]
+      operationId: cancelSchedule
+      summary: Cancel a pending schedule
+      description: |
+        Requires scope `schedules:write`. Only a pending schedule created through the same token name can be cancelled. A
+        schedule made by another name, or by an administrator in the console, returns 404. Cancelling is audited as
+        `schedule.cancel`.
+      security:
+        - bearer: [schedules:write]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: The schedule, now cancelled.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Schedule' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /integrations:
+    get:
+      tags: [Integrations]
+      operationId: listIntegrations
+      summary: List the integrations open to the API
+      description: |
+        Requires scope `integrations:run`. Lists the integrations that are turned on and that an administrator has allowed API requests
+        to run ("Allow API requests to run this" on the integration's page). Others do not appear and return 404.
+      security:
+        - bearer: [integrations:run]
+      responses:
+        '200':
+          description: The integrations.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  integrations:
+                    type: array
+                    items: { $ref: '#/components/schemas/Integration' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /integrations/{id}/runs:
+    post:
+      tags: [Integrations]
+      operationId: runIntegration
+      summary: Run an integration
+      description: |
+        Requires scope `integrations:run`. Runs the integration and waits for it to finish (up to its time limit), then answers with
+        the run: `201` whether the script succeeded or not, with `status` `ok`, `error` or `timeout` in the body. `input` is any JSON
+        value, which the script reads as `input`; each row of the integration's Inputs table is also a variable.
+
+        The script runs with the integration's own scopes, not the token's. A secret variable's value is replaced with `[secret]` in
+        everything returned. The run is audited as `integration.run` with the token's name as the actor, and appears in the
+        integration's run history with trigger `api`.
+      security:
+        - bearer: [integrations:run]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - $ref: '#/components/parameters/idempotencyKey'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                input: { description: 'Any JSON value.' }
+            example: { input: { username: srivera } }
+      responses:
+        '201':
+          description: The run.
+          headers:
+            Location: { schema: { type: string, format: uri }, description: The run's address. }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IntegrationRun' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /integrations/{id}/runs/{runId}:
+    get:
+      tags: [Integrations]
+      operationId: getIntegrationRun
+      summary: Read a run
+      description: Requires scope `integrations:run`. Returns a run that is still in the integration's history (the newest 50 are kept).
+      security:
+        - bearer: [integrations:run]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: runId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: The run.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IntegrationRun' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      description: |
+        A token from Settings → User API. Its name is recorded in the audit log and groups its schedules, so name it after the
+        integration that uses it. Scopes:
+
+        | Scope | Allows |
+        | --- | --- |
+        | `users:read` | Look up users |
+        | `users:write` | Create, change and delete ordinary users |
+        | `bulk:write` | Create many users in one request |
+        | `schedules:write` | Schedule account creation, activation, deactivation and deletion |
+        | `integrations:run` | Run the integrations that have been opened to the API, and read their results |
+  parameters:
+    userId:
+      name: id
+      in: path
+      required: true
+      description: The user's `id` (GUID).
+      schema: { type: string, format: uuid }
+    limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+    offset:
+      name: offset
+      in: query
+      schema: { type: integer, minimum: 0, default: 0 }
+    idempotencyKey:
+      name: Idempotency-Key
+      in: header
+      description: A unique string (such as a UUID) that makes retrying this request safe. See "Retrying safely".
+      schema: { type: string, maxLength: 200 }
+  responses:
+    Unauthorized:
+      description: The token is missing, unknown, revoked or expired.
+      headers:
+        WWW-Authenticate:
+          schema: { type: string }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: A valid bearer token is required. }
+    Forbidden:
+      description: The token lacks the required scope, or the account has administrative access.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: This token does not have the users:write scope. }
+    NotFound:
+      description: Not found.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: No such user. }
+    Invalid:
+      description: The request is not valid.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            error: The request is not valid.
+            errors: ['Password must be at least 12 characters.', 'No such group: Nope.']
+    IdempotencyMismatch:
+      description: The `Idempotency-Key` was already used with a different request.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    Integration:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        description: { type: string }
+        inputs: { type: array, items: { type: string }, description: 'The keys the integration expects in `input`.' }
+        runs: { type: string, format: uri, description: 'POST here to run it.' }
+    Lockdown:
+      type: object
+      description: The account lockdown in force for a person.
+      required: [started_at, started_by, policy_names, networks, locked_account]
+      properties:
+        started_at: { type: string, format: date-time }
+        started_by: { type: string, description: 'Who started it: a console administrator, or `user-api:` and the token name.' }
+        policy_names:
+          type: array
+          items: { type: string }
+          description: The Compromised account policies that applied when it started.
+        networks:
+          type: array
+          description: Each list is a set of addresses or networks (such as `10.0.0.0/8`). Sign-in must come from inside every list. Empty means no restriction.
+          items:
+            type: array
+            items: { type: string }
+        locked_account:
+          type: boolean
+          description: True when the lockdown turned the account off, so ending the lockdown turns it back on.
+    LockdownResult:
+      type: object
+      required: [user, lockdown, run]
+      properties:
+        user: { $ref: '#/components/schemas/User' }
+        lockdown: { $ref: '#/components/schemas/Lockdown' }
+        run:
+          type: object
+          required: [id, status]
+          properties:
+            id: { type: integer, description: 'The run in the integration history.' }
+            status: { type: string, enum: [ok, error] }
+    IntegrationRun:
+      type: object
+      properties:
+        id: { type: integer }
+        integration_id: { type: integer }
+        status: { type: string, enum: [ok, error, timeout] }
+        trigger: { type: string, example: api }
+        started_at: { type: string, format: date-time }
+        duration_ms: { type: integer }
+        result: { description: 'What the script returned (any JSON), or null. Password-like keys are shown as [redacted].' }
+        output: { type: array, items: { type: string }, description: 'The lines the script printed with output().' }
+        logs:
+          type: array
+          items:
+            type: object
+            properties:
+              level: { type: string, enum: [debug, normal, warning, error] }
+              text: { type: string }
+        error:
+          type: [object, 'null']
+          properties:
+            message: { type: string }
+            line: { type: [integer, 'null'] }
+        location: { type: string, format: uri }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+        errors:
+          type: array
+          items: { type: string }
+    Email:
+      type: object
+      required: [email]
+      properties:
+        email: { type: string, format: email }
+        primary:
+          type: boolean
+          description: Exactly one address is primary. If none is marked, the first is.
+    Name:
+      type: object
+      description: Profile fields. All are text and optional unless stated otherwise.
+      properties:
+        first_name: { type: string }
+        last_name: { type: string }
+        display_name: { type: string, description: 'Defaults to first and last name.' }
+        employee_id: { type: string }
+        department: { type: string }
+        title: { type: string }
+        phone: { type: string }
+        mobile: { type: string }
+        company: { type: string }
+        manager: { type: string }
+        office: { type: string }
+        street_address: { type: string }
+        city: { type: string }
+        state: { type: string }
+        postal_code: { type: string }
+        country: { type: string }
+        description: { type: string }
+        upn: { type: string }
+        sam_account_name: { type: string }
+        distinguished_name: { type: string }
+        mail_nickname: { type: string }
+    UserCreate:
+      allOf:
+        - $ref: '#/components/schemas/Name'
+        - type: object
+          required: [username]
+          properties:
+            username: { type: string, maxLength: 255, description: 'Unique, case-insensitive.' }
+            password: { type: string, minLength: 12, writeOnly: true, description: 'At least 12 characters. A password policy can require more.' }
+            generate_password:
+              type: boolean
+              description: Choose a random password instead. Required if `password` is absent.
+            email: { type: string, format: email, description: 'Shorthand for a single primary address.' }
+            personal_email: { type: string, format: email, description: 'Recovery address. Must differ from the organizational addresses.' }
+            emails:
+              type: array
+              maxItems: 10
+              description: Strings or objects. An address cannot belong to two users.
+              items:
+                oneOf:
+                  - { type: string, format: email }
+                  - { $ref: '#/components/schemas/Email' }
+            groups:
+              type: array
+              items: { type: string }
+              description: Names of existing local groups.
+            active: { type: boolean, default: true }
+            mfa_required: { type: boolean, default: false, description: 'Require a second factor at sign-in.' }
+            attributes:
+              type: object
+              additionalProperties: { type: string }
+              description: Custom attributes. Names start with a letter and use letters, digits, `.`, `_` or `-`.
+    UserUpdate:
+      allOf:
+        - $ref: '#/components/schemas/Name'
+        - type: object
+          properties:
+            username: { type: string }
+            password: { type: string, minLength: 12, writeOnly: true, description: 'At least 12 characters. A password policy can require more.' }
+            email: { type: string, format: email, description: 'Replaces the primary address; other addresses are kept.' }
+            personal_email: { type: string, format: email, description: 'Recovery address. Treated as verified when set here. An empty string clears it.' }
+            emails:
+              type: array
+              maxItems: 10
+              description: Replaces all addresses.
+              items:
+                oneOf:
+                  - { type: string, format: email }
+                  - { $ref: '#/components/schemas/Email' }
+            active: { type: boolean }
+            mfa_required: { type: boolean }
+            attributes:
+              type: object
+              additionalProperties:
+                type: [string, 'null']
+              description: Attributes to set. A value of `null` removes the attribute; others are left alone.
+    User:
+      allOf:
+        - $ref: '#/components/schemas/Name'
+        - type: object
+          required: [id, username, emails, active, created_at]
+          properties:
+            id: { type: string, format: uuid }
+            username: { type: string }
+            email: { type: string, description: 'The primary address (empty if none).' }
+            personal_email: { type: [string, 'null'], description: 'The recovery address, or null.' }
+            emails:
+              type: array
+              items:
+                type: object
+                properties:
+                  email: { type: string }
+                  primary: { type: boolean }
+            active: { type: boolean }
+            mfa_required: { type: boolean }
+            attributes:
+              type: object
+              additionalProperties: { type: string }
+            groups:
+              type: array
+              items: { type: string }
+            password_changed_at:
+              type: [string, 'null']
+              format: date-time
+            password_changed_via:
+              type: [string, 'null']
+              enum: [self, admin, recovery, api, bulk, null]
+            created_at: { type: string, format: date-time }
+            location: { type: string, format: uri }
+    BulkRequest:
+      type: object
+      required: [users]
+      properties:
+        users:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items: { $ref: '#/components/schemas/UserCreate' }
+        dry_run: { type: boolean, default: false }
+        on_error:
+          type: string
+          enum: [skip, abort]
+          default: skip
+        generate_passwords:
+          type: boolean
+          default: false
+          description: Give every row without a password a random one.
+    BulkResult:
+      type: object
+      required: [dry_run, summary, rows]
+      properties:
+        dry_run: { type: boolean }
+        job_id: { type: integer, description: 'Present when users were created.' }
+        summary:
+          type: object
+          properties:
+            total: { type: integer }
+            created: { type: integer }
+            valid: { type: integer, description: 'Rows that would be created (dry run).' }
+            failed: { type: integer }
+        rows:
+          type: array
+          items:
+            type: object
+            properties:
+              row: { type: integer, description: 'Position in `users`, starting at 1.' }
+              username: { type: string }
+              status: { type: string, enum: [valid, created, error, skipped] }
+              errors:
+                type: array
+                items: { type: string }
+              id: { type: integer, description: 'Internal id of a created user.' }
+        generated:
+          type: array
+          description: Passwords generated for created users. Returned once.
+          items:
+            type: object
+            properties:
+              username: { type: string }
+              password: { type: string }
+    ScheduleRequest:
+      type: object
+      required: [action, run_at]
+      properties:
+        action: { type: string, enum: [create, activate, deactivate, delete] }
+        run_at: { type: string, format: date-time, description: 'When to act. Must be in the future.' }
+        user_id: { type: string, format: uuid, description: 'The user to act on (not for `create`).' }
+        group: { type: string, description: 'A group name, to act on all its members (`activate` and `deactivate` only).' }
+        users:
+          type: array
+          description: The users to create (`create` only), each with a password.
+          items: { $ref: '#/components/schemas/UserCreate' }
+        on_error:
+          type: string
+          enum: [skip, abort]
+          default: skip
+          description: For `create`, as in bulk create.
+    Schedule:
+      type: object
+      properties:
+        id: { type: integer }
+        action: { type: string, enum: [create, activate, deactivate, delete] }
+        run_at: { type: integer, description: 'Unix time in seconds. Requests take an RFC 3339 string instead.' }
+        scope: { type: string, enum: [user, group, new] }
+        target: { type: string, description: 'A username, group name, or a count of new users.' }
+        status: { type: string, enum: [pending, running, done, failed, cancelled] }
+        result: { type: string, description: 'What happened when it ran.' }
+        created_by: { type: string }
+        created_at: { type: integer }
+        ran_at: { type: [integer, 'null'], description: 'Unix time in seconds, or null until the action runs.' }
