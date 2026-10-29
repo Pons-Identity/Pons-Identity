@@ -200,10 +200,37 @@ test('names must be identifiers, and may not reuse JavaScript object names', asy
   assert.match(res.json.errors.join(' '), /reserved/);
 });
 
-test('an empty function is refused', async () => {
-  const res = await saveFn('empty', '   ');
-  assert.equal(res.status, 400);
-  assert.match(res.json.errors.join(' '), /Write the function/);
+test('a new function can be added before its body is written, but an existing one needs a body', async () => {
+  const added = await saveFn('draft', '', 'Not written yet');
+  assert.equal(added.status, 200);
+  assert.equal(added.json.functions.find((f) => f.name === 'draft').script, '');
+  const emptied = await saveFn('draft', '   ');
+  assert.equal(emptied.status, 400);
+  assert.match(emptied.json.errors.join(' '), /Write the function/);
+});
+
+test('a run that calls a function with no body yet is refused before it starts, and so is a function that calls one', async () => {
+  assert.equal((await saveFn('blank', '')).status, 200);
+  const direct1 = await direct('return await fn.blank({});');
+  assert.equal(direct1.status, 'error');
+  assert.match(direct1.error.message, /No body yet for fn\.blank/);
+  assert.equal((await saveFn('outer', 'return await fn.blank({});')).status, 200);
+  const direct2 = await direct('return await fn.outer({});');
+  assert.equal(direct2.status, 'error');
+  assert.match(direct2.error.message, /No body yet for fn\.blank/);
+});
+
+test('a function with no body yet fails when a run reaches it by a name it builds', async () => {
+  const r = await direct('return await fn["blank"]({});');
+  assert.equal(r.status, 'error');
+  assert.match(r.error.message, /No body yet for fn\.blank/);
+});
+
+test('once the body is written, a run that calls the function goes ahead', async () => {
+  assert.equal((await saveFn('blank', 'return "written";')).status, 200);
+  const r = await direct('return await fn.outer({});');
+  assert.equal(r.status, 'ok');
+  assert.equal(JSON.parse(r.result), 'written');
 });
 
 test('saving again replaces the function, and it is what the next run calls', async () => {

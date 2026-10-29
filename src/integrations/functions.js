@@ -22,15 +22,18 @@ const list = () => db.all('SELECT * FROM integration_functions ORDER BY name COL
 const sources = () => Object.fromEntries(db.all('SELECT name, script, inputs FROM integration_functions')
   .map((r) => [r.name, { script: r.script, inputs: JSON.parse(r.inputs || '[]') }]));
 
-/** Checks a submitted function against the others already saved. Returns { errors }, empty when it can be saved. */
-function check(name, body) {
+/**
+ * Checks a submitted function against the others already saved. Returns { errors }, empty when it can be saved. A new function
+ * may be added without a body, since its body is written on the next tab; once it exists, it needs one.
+ */
+function check(name, body, existed) {
   const errors = [];
   if (!NAME_RE.test(name)) errors.push('A function name starts with a letter or underscore and has up to 64 letters, digits or underscores.');
   else if (name in Object.prototype) errors.push(`${name} is a reserved name. Choose another.`);
   const table = inputs.parse(body.inputs);
   errors.push(...table.errors);
   const script = typeof body.script === 'string' ? body.script : '';
-  if (!script.trim()) errors.push('Write the function.');
+  if (!script.trim()) { if (existed) errors.push('Write the function.'); }
   else if (script.length > engine.MAX_SCRIPT) errors.push(`A function can be at most ${engine.MAX_SCRIPT} characters.`);
   else if (!table.errors.length) {
     const problem = engine.check(script, { params: 'args', prelude: inputs.bindings(table.inputs, 'args ?? {}') });
@@ -47,12 +50,12 @@ function check(name, body) {
  * renaming one means saving it under the new name and deleting the old.
  */
 function save(name, body, by) {
-  const { errors } = check(name, body);
+  const existed = Boolean(db.get('SELECT 1 FROM integration_functions WHERE name = ?', name));
+  const { errors } = check(name, body, existed);
   if (errors.length) return { errors };
   const description = typeof body.description === 'string' ? body.description.trim().slice(0, DESCRIPTION_MAX) : '';
-  const script = body.script;
+  const script = typeof body.script === 'string' ? body.script : '';
   const table = JSON.stringify(inputs.parse(body.inputs).inputs);
-  const existed = Boolean(db.get('SELECT 1 FROM integration_functions WHERE name = ?', name));
   const now = new Date().toISOString();
   db.run(`INSERT INTO integration_functions (name, description, script, inputs, created_at, created_by, updated_at) VALUES (?,?,?,?,?,?,?)
           ON CONFLICT(name) DO UPDATE SET description = excluded.description, script = excluded.script, inputs = excluded.inputs, updated_at = excluded.updated_at`,

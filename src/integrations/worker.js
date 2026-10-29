@@ -177,7 +177,8 @@ const bootstrap = vm.runInContext(`(function (host, emit, emitOutput, compile, d
   }));
   // The administrator's functions, as fn.NAME({ ... }). Each is compiled into this context, so it has this run's scopes and budget.
   const fn = Object.create(null);
-  for (const [name, f] of Object.entries(D.functions)) fn[name] = compile(name, f);
+  // A function added without a body fails when called, rather than returning nothing.
+  for (const [name, f] of Object.entries(D.functions)) fn[name] = f.script.trim() ? compile(name, f) : async () => { throw new Error('No body yet for fn.' + name + '. Write it in Integrations → Functions.'); };
   define('fn', Object.freeze(fn));
   define('sleep', (ms) => call('sleep', ms));
   define('log', log);

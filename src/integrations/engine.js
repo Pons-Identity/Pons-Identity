@@ -35,6 +35,25 @@ function check(script, options) {
   }
 }
 
+/**
+ * The functions a script calls that have no body yet, by name. Follows the calls a function makes to other functions, so a
+ * function that calls an empty one is caught too. Names the script builds at run time are caught by the worker instead.
+ */
+function unwrittenCalls(script, functions) {
+  const found = new Set();
+  const seen = new Set();
+  const pending = [script];
+  while (pending.length) {
+    for (const [, name] of pending.pop().matchAll(/\bfn\.([A-Za-z_][A-Za-z0-9_]*)/g)) {
+      if (seen.has(name) || !Object.hasOwn(functions, name)) continue;
+      seen.add(name);
+      if (functions[name].script.trim()) pending.push(functions[name].script);
+      else found.add(name);
+    }
+  }
+  return [...found];
+}
+
 const escaped = (s) => JSON.stringify(s).slice(1, -1);
 
 /** Blanks every secret value (and its JSON-escaped form) from `text`. */
@@ -76,6 +95,8 @@ function run(integration, { input = null, trigger = 'manual', event = '', perms 
   const inputs = integration.inputs || [];
   const problem = check(integration.script, { prelude: bindings(inputs, 'input ?? {}') });
   if (problem) return Promise.resolve(finish('error', undefined, problem));
+  const unwritten = unwrittenCalls(integration.script, functions);
+  if (unwritten.length) return Promise.resolve(finish('error', undefined, { message: `No body yet for ${unwritten.map((n) => `fn.${n}`).join(', ')}. Write it in Integrations → Functions before running this.` }));
   let inputJson;
   try { inputJson = JSON.stringify(input === undefined ? null : input); } catch { return Promise.resolve(finish('error', undefined, { message: 'The input is not valid JSON.' })); }
   if (inputJson.length > MAX_INPUT) return Promise.resolve(finish('error', undefined, { message: 'The input is too large.' }));
